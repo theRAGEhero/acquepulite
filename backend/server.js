@@ -22,7 +22,7 @@ import {
 import { ARPA_REGIONS, MAJOR_ITALIAN_RIVERS, EEA_IED } from "./arpaRegistry.js";
 import { loadEeaData, hasEeaData, POLLUTANT_MAP } from "./eeaData.js";
 import { log } from "./logger.js";
-import { getRiverKnowledge } from "./wikimedia.js";
+import { getNearbyPopulationContext, getRiverKnowledge } from "./wikimedia.js";
 
 const app = express();
 app.use(cors());
@@ -456,6 +456,21 @@ app.get("/api/rivers/:id/knowledge", async (req, res) => {
       available: false,
       error: "Wikimedia is temporarily unavailable",
       candidates: [], facts: [], wikipedia: null
+    });
+  }
+});
+
+app.get("/api/rivers/:id/population-context", async (req, res) => {
+  const river = store.rivers.find(r => r.id === req.params.id);
+  if (!river?.geom) return res.status(404).json({ error: "River geometry not found" });
+  try {
+    res.json(await getNearbyPopulationContext(river));
+  } catch (error) {
+    log.warn("WIKIDATA", `${river.name} population context: ${error.message}`);
+    res.status(502).json({
+      available: false,
+      error: "Wikidata population context is temporarily unavailable",
+      detail: error.message
     });
   }
 });
@@ -1275,6 +1290,9 @@ app.get("/api/data-sources", (_req, res) => {
       wikidata_license: "CC0",
       wikipedia_license: "CC BY-SA",
       api_docs_url: "https://www.mediawiki.org/wiki/Wikibase/API",
+      query_service_docs_url: "https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service/queries/examples#Geographic_locations",
+      population_property_url: "https://www.wikidata.org/wiki/Property:P1082",
+      point_in_time_property_url: "https://www.wikidata.org/wiki/Property:P585",
       wikipedia_api_docs_url: "https://www.mediawiki.org/wiki/Wikimedia_REST_API",
       environmental_incident_class_url: "https://www.wikidata.org/wiki/Q3193890"
     },

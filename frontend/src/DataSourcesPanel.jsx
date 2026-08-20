@@ -61,7 +61,9 @@ export default function DataSourcesPanel() {
       <div className="param-card" style={{ borderLeft: "3px solid #20c9ff" }}>
         <div className="name" style={{ fontSize: 13 }}>Wikidata + Wikipedia</div>
         <div className="limit">
-          River identities and incident relationships: <Source href={data.wikimedia.wikidata_url}>Wikidata</Source> ({data.wikimedia.wikidata_license})<br/>
+          River identities, incident relationships, and nearby-place populations: <Source href={data.wikimedia.wikidata_url}>Wikidata</Source> ({data.wikimedia.wikidata_license})<br/>
+          Population statements: <Source href={data.wikimedia.population_property_url}>population (P1082)</Source> with <Source href={data.wikimedia.point_in_time_property_url}>point in time (P585)</Source><br/>
+          Corridor discovery: <Source href={data.wikimedia.query_service_docs_url}>Wikidata geospatial query documentation</Source><br/>
           Descriptions and article links: <Source href={data.wikimedia.wikipedia_url}>Wikipedia</Source> ({data.wikimedia.wikipedia_license})<br/>
           <Source href={data.wikimedia.environmental_incident_class_url}>Environmental-disaster class</Source> · {" "}
           <Source href={data.wikimedia.api_docs_url}>Wikidata API</Source> · {" "}

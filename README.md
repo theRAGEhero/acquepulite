@@ -7,9 +7,11 @@ fallbacks, and use a blue (good) to red (bad) severity scale.
 
 Selecting a river opens an expandable operations drawer with measurements,
 water-body classifications, nearby companies, geometry provenance, and a
-conservatively matched Wikipedia/Wikidata dossier. Every displayed dataset has
-a direct source link. Ambiguous Wikimedia names are returned as candidates
-instead of asserted facts.
+conservatively matched Wikipedia/Wikidata dossier. It also derives a clearly
+labelled, non-additive population context from dated Wikidata population
+statements for places whose coordinate lies within 10 km of the actual river
+line. Every displayed dataset has a direct source link. Ambiguous Wikimedia
+names are returned as candidates instead of asserted facts.
 
 ## Map controls
 

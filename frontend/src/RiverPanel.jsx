@@ -34,6 +34,10 @@ export default function RiverPanel({
   const [knowledgeLoading, setKnowledgeLoading] = useState(true);
   const [knowledgeError, setKnowledgeError] = useState(null);
   const [knowledgeAttempt, setKnowledgeAttempt] = useState(0);
+  const [populationContext, setPopulationContext] = useState(null);
+  const [populationLoading, setPopulationLoading] = useState(true);
+  const [populationError, setPopulationError] = useState(null);
+  const [populationAttempt, setPopulationAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,6 +76,25 @@ export default function RiverPanel({
     return () => controller.abort();
   }, [river.id, knowledgeAttempt]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setPopulationContext(null);
+    setPopulationLoading(true);
+    setPopulationError(null);
+    fetch(`/api/rivers/${river.id}/population-context`, { signal: controller.signal })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || data.error || `Wikidata service returned ${response.status}`);
+        return data;
+      })
+      .then(data => { setPopulationContext(data); setPopulationLoading(false); })
+      .catch(error => {
+        if (error.name === "AbortError") return;
+        setPopulationError(error.message); setPopulationLoading(false);
+      });
+    return () => controller.abort();
+  }, [river.id, populationAttempt]);
+
   const handleStationClick = (s) => {
     onStationClick(s.lat, s.lon);
     setFacilitiesStation(s);
@@ -105,6 +128,10 @@ export default function RiverPanel({
 
       <KnowledgeCard data={knowledge} loading={knowledgeLoading} error={knowledgeError}
         riverName={river.name} onRetry={() => setKnowledgeAttempt(value => value + 1)} />
+
+      <PopulationContext data={populationContext} loading={populationLoading} error={populationError}
+        riverName={river.name} onLocate={onStationClick}
+        onRetry={() => setPopulationAttempt(value => value + 1)} />
 
       <RiverCompanies data={facilities} loading={facilitiesLoading} error={facilitiesError}
         onCompanyClick={onStationClick} />
@@ -438,6 +465,83 @@ function KnowledgeCard({ data, loading, error, riverName, onRetry }) {
           )}
         </div>
       </div>
+    </section>
+  );
+}
+
+function PopulationContext({ data, loading, error, riverName, onLocate, onRetry }) {
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => setShowAll(false), [data?.fetched_at]);
+  const places = data?.places || [];
+  const visible = showAll ? places : places.slice(0, 10);
+  const number = value => new Intl.NumberFormat("it-IT").format(value || 0);
+
+  return (
+    <section className="population-context">
+      <div className="section-title">
+        <span>Population near the river · Wikidata</span>
+        {data?.available && <span>{data.place_count} places within {data.radius_km} km</span>}
+      </div>
+      {loading && <div className="population-loading">Sampling the mapped river corridor and resolving population statements…</div>}
+      {error && <div className="service-state error population-error">
+        <strong>Nearby population context is temporarily unavailable</strong>
+        <span>{error}</span>
+        <div className="service-actions">
+          <button onClick={onRetry}>Retry</button>
+          <a href={`https://www.wikidata.org/w/index.php?search=${encodeURIComponent(`${riverName} population`)}`}
+            target="_blank" rel="noreferrer">Search Wikidata ↗</a>
+        </div>
+      </div>}
+      {data?.available && (
+        <>
+          <div className="population-summary">
+            <div><span>Reported population</span><strong>{number(data.reported_population_sum)}</strong></div>
+            <div><span>Nearby records</span><strong>{number(data.place_count)}</strong></div>
+            <div><span>Corridor samples</span><strong>{number(data.sampled_points)}</strong></div>
+          </div>
+          <div className="population-caveat">
+            <strong>Context—not an affected-population estimate.</strong> {data.interpretation}
+            {data.places_truncated && <> The total and list use the nearest {data.place_count} of {data.matched_place_count} matched records so every included value remains inspectable.</>}
+          </div>
+          {visible.length ? <div className="population-grid">
+            {visible.map(place => (
+              <article className="population-row" key={place.id}>
+                <button type="button" className="population-locate"
+                  onClick={() => onLocate(place.lat, place.lon)} title="Locate on map">
+                  <span className="population-marker" />
+                  <span>
+                    <strong>{place.name}</strong>
+                    <small>{place.distance_to_river_km.toFixed(1)} km from river · {place.description || "Wikidata place"}</small>
+                  </span>
+                </button>
+                <div className="population-value">
+                  <strong>{number(place.population)}</strong>
+                  <small>{place.date ? `as of ${place.date.slice(0, 4)}` : "date not stated"}</small>
+                </div>
+                <div className="population-sources">
+                  <a href={place.wikidata_url} target="_blank" rel="noreferrer">Place ↗</a>
+                  <a href={place.population_statement_url} target="_blank" rel="noreferrer">P1082 statement ↗</a>
+                  {place.source_urls?.slice(0, 1).map(url => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer">Original reference ↗</a>
+                  ))}
+                  {!place.source_urls?.length && place.stated_in?.slice(0, 1).map(source => (
+                    <a key={source.id} href={source.url} target="_blank" rel="noreferrer">Stated in {source.id} ↗</a>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div> : <div className="population-loading">No dated population records were found inside this mapped corridor.</div>}
+          {places.length > 10 && <button className="show-companies" onClick={() => setShowAll(value => !value)}>
+            {showAll ? "Show first 10 places" : `Show all ${places.length} places`}
+          </button>}
+          <div className="population-method">
+            {data.methodology} Sources: <a href={data.source.query_service_url} target="_blank" rel="noreferrer">Wikidata query ↗</a>
+            {" · "}<a href={data.source.population_property_url} target="_blank" rel="noreferrer">population (P1082) ↗</a>
+            {" · "}<a href={data.source.point_in_time_property_url} target="_blank" rel="noreferrer">point in time (P585) ↗</a>
+            {" · "}<a href={data.source.license_url} target="_blank" rel="noreferrer">{data.source.license} ↗</a>
+          </div>
+        </>
+      )}
     </section>
   );
 }

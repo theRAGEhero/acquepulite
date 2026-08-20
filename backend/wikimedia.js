@@ -85,7 +85,7 @@ export function scoreRiverCandidate(river, entity) {
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "RiverWatch-Italy/1.0 (environmental monitoring dashboard; educational project)",
+      "User-Agent": "AcquePulite/1.0 (environmental monitoring dashboard; educational project)",
       Accept: "application/json"
     },
     signal: AbortSignal.timeout(12000)
@@ -112,6 +112,14 @@ async function getEntities(ids) {
   });
   const data = await fetchJson(`${WIKIDATA_API}?${params}`);
   return data.entities || {};
+}
+
+async function getEntitiesBatched(ids, batchSize = 50) {
+  const entities = {};
+  for (let index = 0; index < ids.length; index += batchSize) {
+    Object.assign(entities, await getEntities(ids.slice(index, index + batchSize)));
+  }
+  return entities;
 }
 
 function bestText(entity, field) {
@@ -289,6 +297,201 @@ async function getEnvironmentalIncidents(river, riverEntity) {
     wikidata_url: `https://www.wikidata.org/wiki/${item.entity.id}`,
     wikipedia: await getWikipedia(item.entity)
   })));
+}
+
+function pointSegmentDistanceKm(lat, lon, a, b) {
+  const referenceLat = (lat + a[1] + b[1]) / 3 * Math.PI / 180;
+  const kmPerLon = 111.32 * Math.cos(referenceLat);
+  const px = lon * kmPerLon;
+  const py = lat * 110.54;
+  const ax = a[0] * kmPerLon;
+  const ay = a[1] * 110.54;
+  const bx = b[0] * kmPerLon;
+  const by = b[1] * 110.54;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  const position = lengthSquared
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared))
+    : 0;
+  return Math.hypot(px - (ax + position * dx), py - (ay + position * dy));
+}
+
+export function distanceToRiverKm(lat, lon, geometry) {
+  let nearest = Infinity;
+  for (const line of geometryLinesForPopulation(geometry)) {
+    if (line.length === 1) nearest = Math.min(nearest, distanceKm(lon, lat, line[0][0], line[0][1]));
+    for (let index = 1; index < line.length; index++) {
+      nearest = Math.min(nearest, pointSegmentDistanceKm(lat, lon, line[index - 1], line[index]));
+    }
+  }
+  return nearest;
+}
+
+function geometryLinesForPopulation(geometry) {
+  if (geometry?.type === "LineString") return [geometry.coordinates || []];
+  if (geometry?.type === "MultiLineString") return geometry.coordinates || [];
+  return [];
+}
+
+function pointAlongLine(line, targetKm) {
+  let travelled = 0;
+  for (let index = 1; index < line.length; index++) {
+    const start = line[index - 1];
+    const end = line[index];
+    const segmentKm = distanceKm(start[0], start[1], end[0], end[1]);
+    if (travelled + segmentKm >= targetKm) {
+      const fraction = segmentKm ? (targetKm - travelled) / segmentKm : 0;
+      return [
+        start[0] + (end[0] - start[0]) * fraction,
+        start[1] + (end[1] - start[1]) * fraction
+      ];
+    }
+    travelled += segmentKm;
+  }
+  return line[line.length - 1];
+}
+
+export function sampleRiverCorridor(geometry, spacingKm = 15, maximumPoints = 36) {
+  const sampled = [];
+  for (const line of geometryLinesForPopulation(geometry).filter(value => value.length)) {
+    const lengthKm = line.slice(1).reduce((sum, point, index) => (
+      sum + distanceKm(line[index][0], line[index][1], point[0], point[1])
+    ), 0);
+    const count = Math.max(1, Math.ceil(lengthKm / spacingKm) + 1);
+    for (let index = 0; index < count; index++) {
+      sampled.push(pointAlongLine(line, count === 1 ? 0 : lengthKm * index / (count - 1)));
+    }
+  }
+  if (sampled.length <= maximumPoints) return sampled;
+  const reduced = [];
+  const step = (sampled.length - 1) / (maximumPoints - 1);
+  for (let index = 0; index < maximumPoints; index++) reduced.push(sampled[Math.round(index * step)]);
+  return reduced;
+}
+
+function qualifierDate(claim, property = "P585") {
+  const time = claim?.qualifiers?.[property]?.[0]?.datavalue?.value?.time;
+  return time ? time.replace(/^\+/, "").slice(0, 10) : null;
+}
+
+export function selectLatestPopulation(entity) {
+  const claims = (entity?.claims?.P1082 || []).filter(claim => {
+    const amount = Number(claim?.mainsnak?.datavalue?.value?.amount);
+    return claim.rank !== "deprecated" && Number.isFinite(amount) && amount >= 0;
+  });
+  if (!claims.length) return null;
+  claims.sort((a, b) => {
+    const rank = value => value.rank === "preferred" ? 2 : 1;
+    return rank(b) - rank(a) || String(qualifierDate(b) || "").localeCompare(String(qualifierDate(a) || ""));
+  });
+  const claim = claims[0];
+  const population = Math.round(Number(claim.mainsnak.datavalue.value.amount));
+  const references = claim.references || [];
+  const sourceUrls = [...new Set(references.flatMap(reference => (
+    reference.snaks?.P854 || []
+  )).map(snak => snak?.datavalue?.value).filter(value => typeof value === "string" && /^https?:/i.test(value)))];
+  const statedIn = [...new Set(references.flatMap(reference => (
+    reference.snaks?.P248 || []
+  )).map(snak => snak?.datavalue?.value?.id).filter(Boolean))];
+  return {
+    population,
+    date: qualifierDate(claim),
+    rank: claim.rank || "normal",
+    source_urls: sourceUrls,
+    stated_in: statedIn.map(id => ({ id, url: `https://www.wikidata.org/wiki/${id}` }))
+  };
+}
+
+const POPULATION_RADIUS_KM = 10;
+const SETTLEMENT_TYPES = ["Q747074", "Q515", "Q3957", "Q532", "Q5084", "Q486972", "Q1134686", "Q123705"];
+
+async function findNearbySettlementIds(geometry) {
+  const centers = sampleRiverCorridor(geometry);
+  if (!centers.length) return { ids: [], centers: [], query: null };
+  const centerValues = centers.map(([lon, lat]) => (
+    `"Point(${Number(lon).toFixed(6)} ${Number(lat).toFixed(6)})"^^geo:wktLiteral`
+  )).join(" ");
+  const typeValues = SETTLEMENT_TYPES.map(id => `wd:${id}`).join(" ");
+  const query = `SELECT DISTINCT ?place WHERE {
+    VALUES ?center { ${centerValues} }
+    SERVICE wikibase:around {
+      ?place wdt:P625 ?location .
+      bd:serviceParam wikibase:center ?center .
+      bd:serviceParam wikibase:radius "${POPULATION_RADIUS_KM}" .
+    }
+    ?place wdt:P17 wd:Q38 ; wdt:P31 ?kind ; wdt:P1082 ?population .
+    VALUES ?kind { ${typeValues} }
+  } LIMIT 300`;
+  const params = new URLSearchParams({ query, format: "json" });
+  const data = await fetchJson(`https://query.wikidata.org/sparql?${params}`);
+  const ids = [...new Set((data.results?.bindings || [])
+    .map(binding => binding.place?.value?.split("/").pop()).filter(Boolean))];
+  return { ids, centers, query };
+}
+
+const populationPending = new Map();
+
+export async function getNearbyPopulationContext(river) {
+  const cacheKey = `population:${river.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) return cached.value;
+  if (populationPending.has(cacheKey)) return populationPending.get(cacheKey);
+  const request = buildNearbyPopulationContext(river, cacheKey);
+  populationPending.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    populationPending.delete(cacheKey);
+  }
+}
+
+async function buildNearbyPopulationContext(river, cacheKey) {
+  const { ids, centers, query } = await findNearbySettlementIds(river.geom);
+  const entities = await getEntitiesBatched(ids);
+  const places = Object.values(entities).map(entity => {
+    const population = selectLatestPopulation(entity);
+    const coordinate = rawClaim(entity, "P625");
+    if (!population || !Number.isFinite(coordinate?.latitude) || !Number.isFinite(coordinate?.longitude)) return null;
+    const distance = distanceToRiverKm(coordinate.latitude, coordinate.longitude, river.geom);
+    if (!Number.isFinite(distance) || distance > POPULATION_RADIUS_KM) return null;
+    return {
+      id: entity.id,
+      name: bestText(entity, "labels") || entity.id,
+      description: bestText(entity, "descriptions"),
+      lat: coordinate.latitude,
+      lon: coordinate.longitude,
+      distance_to_river_km: Number(distance.toFixed(2)),
+      ...population,
+      wikidata_url: `https://www.wikidata.org/wiki/${entity.id}`,
+      population_statement_url: `https://www.wikidata.org/wiki/${entity.id}#P1082`
+    };
+  }).filter(Boolean).sort((a, b) => a.distance_to_river_km - b.distance_to_river_km || b.population - a.population);
+  const sourcedPlaces = places.slice(0, 80);
+  const result = {
+    available: true,
+    radius_km: POPULATION_RADIUS_KM,
+    place_count: sourcedPlaces.length,
+    matched_place_count: places.length,
+    places_truncated: places.length > sourcedPlaces.length,
+    reported_population_sum: sourcedPlaces.reduce((sum, place) => sum + place.population, 0),
+    places: sourcedPlaces,
+    sampled_points: centers.length,
+    methodology: "Wikidata settlements and Italian municipalities whose coordinate point is within the mapped river corridor; exact distance is recalculated against the river line.",
+    interpretation: "Context only. The sum is non-additive and is not a count of people exposed, served, flooded, or otherwise affected by the river.",
+    source: {
+      name: "Wikidata",
+      url: "https://www.wikidata.org/",
+      query_service_url: query ? `https://query.wikidata.org/#${encodeURIComponent(query)}` : "https://query.wikidata.org/",
+      population_property_url: "https://www.wikidata.org/wiki/Property:P1082",
+      point_in_time_property_url: "https://www.wikidata.org/wiki/Property:P585",
+      license: "CC0 1.0",
+      license_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    },
+    fetched_at: new Date().toISOString()
+  };
+  cache.set(cacheKey, { savedAt: Date.now(), value: result });
+  return result;
 }
 
 export async function getRiverKnowledge(river) {
