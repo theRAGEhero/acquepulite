@@ -104,6 +104,7 @@ export default function RiverPanel({
   const isArpa = summary?.source === "ARPA Lombardia";
   const isArpae = summary?.source === "ARPAE Emilia-Romagna";
   const isStatusAssessment = summary?.assessment_type === "water_body_status";
+  const isNationalBaseline = river.national_baseline || summary?.source === "EEA WISE WFD 2022";
 
   return (
     <>
@@ -116,7 +117,9 @@ export default function RiverPanel({
             WFD: {WFD_LABEL[river.wfd_status]}
           </span>
         )}
-        {(isArpa || isArpae || isStatusAssessment) && <span className="badge real" style={{ marginLeft: 4 }}>Official agency data</span>}
+        {isNationalBaseline
+          ? <span className="badge real" style={{ marginLeft: 4 }}>Official EEA WFD baseline</span>
+          : (isArpa || isArpae || isStatusAssessment) && <span className="badge real" style={{ marginLeft: 4 }}>Official agency data</span>}
       </div>
 
       {river.geometry_source && (
@@ -124,6 +127,12 @@ export default function RiverPanel({
           River line: <a className="source-link" href={geometrySourceUrl(river)} target="_blank" rel="noreferrer">{river.geometry_source} ↗</a>
           {river.source_dataset_version && <> · {river.source_dataset_version}</>}
           {river.geometry_quality && <> · {river.geometry_quality}</>}
+        </div>
+      )}
+
+      {river.national_baseline && river.region_source_url && (
+        <div className="meta" style={{ marginTop: 4 }}>
+          Regional assignment: <a className="source-link" href={river.region_source_url} target="_blank" rel="noreferrer">Eurostat GISCO NUTS 2024 â†—</a>
         </div>
       )}
 
@@ -227,7 +236,7 @@ export default function RiverPanel({
             {summary.source_period && <> · {summary.source_period}</>}
             {summary.source_license && <> · <SourceLink href={summary.source_license_url}>{summary.source_license}</SourceLink></>}
           </div>
-          <WfdGuide method={summary.assessment_method} />
+          <WfdGuide method={summary.assessment_method} nationalBaseline={isNationalBaseline} />
 
           <div className="section-title">Water bodies ({summary.stretches?.length || 0})</div>
           {summary.stretches?.map(s => {
@@ -243,6 +252,13 @@ export default function RiverPanel({
                   </span>
                 </div>
                 {s.comune && <div className="water-body-location">{s.comune}</div>}
+                {(s.ecological_assessment_year || s.chemical_assessment_year) && (
+                  <div className="water-body-location">
+                    Assessment period: {s.ecological_assessment_year || s.chemical_assessment_year}
+                    {s.ecological_confidence && <> Â· ecological confidence: {s.ecological_confidence}</>}
+                    {s.chemical_confidence && <> Â· chemical confidence: {s.chemical_confidence}</>}
+                  </div>
+                )}
                 <div className="status-components">
                   {s.ecological && <StatusComponent label="Ecological status" raw={s.ecological} info={ecological} />}
                   {s.chemical && <StatusComponent label="Chemical status" raw={s.chemical} info={chemical} />}
@@ -291,7 +307,7 @@ function StatusComponent({ label, raw, info }) {
   );
 }
 
-function WfdGuide({ method }) {
+function WfdGuide({ method, nationalBaseline = false }) {
   const limecoOnly = /LIMeco/i.test(method || "");
   return (
     <div className="wfd-guide">
@@ -301,7 +317,9 @@ function WfdGuide({ method }) {
       ) : (
         <p>Ecological status has five classes: Elevato and Buono are favorable. Sufficiente is moderate and already below the WFD objective; Scarso is poor; Cattivo is the worst. Chemical status is only Buono (pass) or Non buono (fail). The overall objective fails when either component fails.</p>
       )}
-      <a href={limecoOnly
+      <a href={nationalBaseline
+        ? "https://water.europa.eu/freshwater/europe-freshwater/water-framework-directive/ecological-status-of-surface-water"
+        : limecoOnly
         ? "https://www.arpa.veneto.it/dati-ambientali/open-data/idrosfera/corsi-dacqua/limeco-livello-di-inquinamento-espresso-dai-macrodescrittori-per-lo-stato-ecologico-dei-corsi-dacqua"
         : "https://www.arpa.piemonte.it/temi/acqua/qualita-delle-acque"}
         target="_blank" rel="noreferrer">Official class explanation ↗</a>

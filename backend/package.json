@@ -6,7 +6,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "hydro:wise": "node fetchWiseHydrography.js"
+    "hydro:wise": "node fetchWiseHydrography.js",
+    "data:national": "node fetchNationalBaseline.mjs"
   },
   "dependencies": {
     "adm-zip": "^0.6.0",

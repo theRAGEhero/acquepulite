@@ -20,7 +20,7 @@ export default function DataSourcesPanel() {
 
   const regionItems = data.water_quality.regions || [];
   const integrated = regionItems.filter(r => r.status === "integrated");
-  const researched = regionItems.filter(r => r.status === "researched");
+  const baseline = regionItems.filter(r => r.status !== "integrated");
 
   return (
     <>
@@ -37,6 +37,18 @@ export default function DataSourcesPanel() {
           </div>
         </div>
       ))}
+
+      {data.water_quality.national_baseline && (
+        <div className="param-card" style={{ borderLeft: "3px solid #20c9ff" }}>
+          <div className="name" style={{ fontSize: 13 }}>National coverage — EEA WISE WFD 2022</div>
+          <div className="limit">
+            {data.water_quality.national_baseline.rivers.toLocaleString()} mapped rivers supplement regions without a dedicated agency adapter.<br/>
+            Status and geometry: <Source href={data.water_quality.national_baseline.source_url}>EEA WISE WFD</Source><br/>
+            Regional assignment: <Source href={data.water_quality.national_baseline.region_boundary_source}>Eurostat GISCO NUTS 2024</Source><br/>
+            License: <Source href={data.water_quality.national_baseline.license_url}>{data.water_quality.national_baseline.license}</Source>
+          </div>
+        </div>
+      )}
 
       <div className="param-card" style={{ borderLeft: "3px solid #22c55e" }}>
         <div className="name" style={{ fontSize: 13 }}>River Geometries — Official + OSM fallback</div>
@@ -95,7 +107,7 @@ export default function DataSourcesPanel() {
       </div>
 
       <div className="section-title" style={{ marginTop: 18 }}>
-        ARPA Regional Coverage ({integrated.length} integrated)
+        Italian Coverage ({regionItems.length}/20 regions)
       </div>
 
       {integrated.map(r => (
@@ -109,16 +121,16 @@ export default function DataSourcesPanel() {
       ))}
 
       <div style={{ fontSize: 11, color: "#8896a8", margin: "10px 0 6px", fontWeight: 600 }}>
-        Researched ({researched.length})
+        EEA WFD national baseline ({baseline.length})
       </div>
 
-      {researched.map(r => (
-        <div key={r.code} className="station-item" style={{ cursor: "default", opacity: 0.7, fontSize: 12 }}>
-          <span className="dot"></span>
+      {baseline.map(r => (
+        <div key={r.code} className="station-item" style={{ cursor: "default", fontSize: 12 }}>
+          <span className="dot real"></span>
           <span style={{ flex: 1 }}>
             <Source href={r.portal}><b>{r.name}</b> — {r.arpa}</Source>
           </span>
-          <span style={{ fontSize: 10, color: "#8896a8" }}>{r.api_type}</span>
+          <span className="badge moderate">WISE baseline</span>
         </div>
       ))}
 

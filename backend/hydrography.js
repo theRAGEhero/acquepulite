@@ -19,6 +19,56 @@ export function combineLineGeometries(geometries) {
     : { type: "MultiLineString", coordinates: lines };
 }
 
+function squaredSegmentDistance(point, start, end) {
+  let x = start[0];
+  let y = start[1];
+  let dx = end[0] - x;
+  let dy = end[1] - y;
+  if (dx || dy) {
+    const t = ((point[0] - x) * dx + (point[1] - y) * dy) / (dx * dx + dy * dy);
+    if (t > 1) { x = end[0]; y = end[1]; }
+    else if (t > 0) { x += dx * t; y += dy * t; }
+  }
+  dx = point[0] - x;
+  dy = point[1] - y;
+  return dx * dx + dy * dy;
+}
+
+function simplifyLine(line, tolerance) {
+  if (!Array.isArray(line) || line.length <= 2) return line;
+  const squaredTolerance = tolerance * tolerance;
+  const markers = new Uint8Array(line.length);
+  markers[0] = 1;
+  markers[line.length - 1] = 1;
+  const stack = [[0, line.length - 1]];
+  while (stack.length) {
+    const [first, last] = stack.pop();
+    let maximum = squaredTolerance;
+    let index = -1;
+    for (let current = first + 1; current < last; current++) {
+      const distance = squaredSegmentDistance(line[current], line[first], line[last]);
+      if (distance > maximum) { index = current; maximum = distance; }
+    }
+    if (index < 0) continue;
+    markers[index] = 1;
+    if (index - first > 1) stack.push([first, index]);
+    if (last - index > 1) stack.push([index, last]);
+  }
+  return line.filter((_, index) => markers[index]);
+}
+
+// Display-only simplification. The full official geometry remains in memory
+// for corridor distance, facility searches, snapping and detailed analysis.
+export function simplifyGeometry(geometry, tolerance = 0.00025) {
+  if (geometry?.type === "LineString") {
+    return { ...geometry, coordinates: simplifyLine(geometry.coordinates, tolerance) };
+  }
+  if (geometry?.type === "MultiLineString") {
+    return { ...geometry, coordinates: geometry.coordinates.map(line => simplifyLine(line, tolerance)) };
+  }
+  return geometry;
+}
+
 function normalized(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/^(fiume|torrente|rio|canale|f\.|t\.|r\.|c\.)\s+/i, "")

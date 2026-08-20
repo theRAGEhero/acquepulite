@@ -75,7 +75,7 @@ function applyNeonBaseStyle(map) {
 
 export default function MapView3D({
   rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork = true, showLabels, showTerrain, basemap,
-  onRiverClick, onStationClick, selectedStation, flyTo, flat = false
+  onRiverClick, onStationClick, selectedStation, flyTo, fitBounds, flat = false
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -147,6 +147,13 @@ export default function MapView3D({
       center: [flyTo[1], flyTo[0]], zoom: flyTo[3] ?? 11, pitch: flat ? 0 : 55, bearing: 0, duration: 2000
     });
   }, [flyTo, flat]);
+
+  useEffect(() => {
+    if (!mapRef.current || !fitBounds?.[0] || !fitBounds?.[1]) return;
+    mapRef.current.fitBounds([fitBounds[0], fitBounds[1]], {
+      padding: 65, duration: 1400, maxZoom: 9
+    });
+  }, [fitBounds]);
 
   function rebuildMap(map) {
     if (map.setProjection) map.setProjection({ type: refs.current.flat ? "mercator" : "globe" });
@@ -346,7 +353,8 @@ export default function MapView3D({
         source_feature_id: p.source_feature_id, geometry_quality: p.geometry_quality,
         source_url: p.source_url, source_license: p.source_license,
         source_license_url: p.source_license_url, source_period: p.source_period,
-        assessment_type: p.assessment_type
+        assessment_type: p.assessment_type, national_baseline: p.national_baseline === true,
+        region_source_url: p.region_source_url
       });
     });
   }

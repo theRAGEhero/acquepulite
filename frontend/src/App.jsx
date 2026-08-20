@@ -13,6 +13,7 @@ export default function App() {
   const [segments, setSegments] = useState(null);
   const [stations, setStations] = useState(null);
   const [dataSources, setDataSources] = useState(null);
+  const [regions, setRegions] = useState([]);
   const [systemHealth, setSystemHealth] = useState(null);
   const [selected, setSelected] = useState(null);
   const [selectedStation, setSelectedStation] = useState(null);
@@ -31,10 +32,26 @@ export default function App() {
   });
   const [paramFilter, setParamFilter] = usePersistentState("paramFilter", null);
   const [basemap, setBasemap] = usePersistentState("basemap", "neon");
+  const [regionFilter, setRegionFilter] = usePersistentState("regionFilter", null);
   const [eeaSites, setEeaSites] = useState(null);
   const [levelsShown, setLevelsShown] = usePersistentState("levelsShown", {
     clean: true, low: true, moderate: true, high: true, critical: true, nodata: true
   });
+
+  const visibleRivers = useMemo(() => {
+    if (!rivers || !regionFilter) return rivers;
+    return {
+      type: "FeatureCollection",
+      features: rivers.features.filter(feature => {
+        const codes = feature.properties.region_codes || [];
+        return codes.includes(regionFilter) || feature.properties.region_code === regionFilter;
+      })
+    };
+  }, [rivers, regionFilter]);
+
+  const visibleRiverIds = useMemo(() => new Set(
+    (visibleRivers?.features || []).map(feature => feature.properties.id)
+  ), [visibleRivers]);
 
   const visibleSegments = useMemo(() => {
     if (!segments) return segments;
@@ -42,6 +59,7 @@ export default function App() {
       type: "FeatureCollection",
       features: segments.features.filter(feature => {
         const properties = feature.properties;
+        if (regionFilter && !visibleRiverIds.has(properties.river_id)) return false;
         const selectedReach = selectedStation &&
           (!selectedStation.river_id || properties.river_id === selectedStation.river_id) &&
           (properties.from_station_id === selectedStation.id || properties.to_station_id === selectedStation.id ||
@@ -56,20 +74,38 @@ export default function App() {
         return levelsShown.critical;
       })
     };
-  }, [segments, levelsShown, selectedStation]);
+  }, [segments, levelsShown, selectedStation, regionFilter, visibleRiverIds]);
+
+  const visibleStations = useMemo(() => {
+    if (!stations || !regionFilter) return stations;
+    return {
+      type: "FeatureCollection",
+      features: stations.features.filter(feature => visibleRiverIds.has(feature.properties.river_id))
+    };
+  }, [stations, regionFilter, visibleRiverIds]);
 
   useEffect(() => {
     Promise.all([
-      fetchJson("/api/rivers"),
       fetchJson("/api/stations"),
-      fetchJson("/api/data-sources")
-    ]).then(([riverData, stationData, sourceData]) => {
-      setRivers(riverData); setStations(stationData); setDataSources(sourceData);
+      fetchJson("/api/data-sources"),
+      fetchJson("/api/regions")
+    ]).then(([stationData, sourceData, regionData]) => {
+      setStations(stationData); setDataSources(sourceData); setRegions(regionData);
     }).catch(() => {
-      setRivers({ type: "FeatureCollection", features: [] });
       setStations({ type: "FeatureCollection", features: [] });
     });
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = regionFilter ? `?region=${encodeURIComponent(regionFilter)}` : "?overview=1";
+    fetchJson(`/api/rivers${query}`, { signal: controller.signal })
+      .then(setRivers)
+      .catch(error => {
+        if (error.name !== "AbortError") setRivers({ type: "FeatureCollection", features: [] });
+      });
+    return () => controller.abort();
+  }, [regionFilter]);
 
   useEffect(() => {
     let active = true;
@@ -89,10 +125,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const url = paramFilter ? `/api/rivers-segments?param=${paramFilter}` : "/api/rivers-segments";
-    fetchJson(url).then(setSegments)
-      .catch(() => setSegments({ type: "FeatureCollection", features: [] }));
-  }, [paramFilter]);
+    const controller = new AbortController();
+    const query = new URLSearchParams();
+    if (paramFilter) query.set("param", paramFilter);
+    if (regionFilter) query.set("region", regionFilter);
+    else query.set("overview", "1");
+    fetchJson(`/api/rivers-segments?${query}`, { signal: controller.signal }).then(setSegments)
+      .catch(error => {
+        if (error.name !== "AbortError") setSegments({ type: "FeatureCollection", features: [] });
+      });
+    return () => controller.abort();
+  }, [paramFilter, regionFilter]);
 
   useEffect(() => {
     if (!layers.eeaSites) return;
@@ -166,7 +209,9 @@ export default function App() {
       geometry_quality: props.geometry_quality,
       source_url: props.source_url, source_license: props.source_license,
       source_license_url: props.source_license_url, source_period: props.source_period,
-      assessment_type: props.assessment_type
+      assessment_type: props.assessment_type,
+      national_baseline: props.national_baseline === true,
+      region_source_url: props.region_source_url
     });
     setDrawer("river");
     setDrawerFullscreen(false);
@@ -175,17 +220,17 @@ export default function App() {
   }, [setLayers]);
 
   const metrics = useMemo(() => {
-    const riverFeatures = rivers?.features || [];
-    const segmentFeatures = segments?.features || [];
+    const riverFeatures = visibleRivers?.features || [];
+    const segmentFeatures = visibleSegments?.features || [];
     const official = riverFeatures.filter(feature => feature.properties.geometry_quality === "official").length;
     return {
       rivers: riverFeatures.length,
       reaches: segmentFeatures.length,
-      stations: stations?.features?.length || 0,
+      stations: visibleStations?.features?.length || 0,
       alerts: segmentFeatures.filter(feature => Number(feature.properties.pollution_score) >= 0.85).length,
       official: riverFeatures.length ? Math.round((official / riverFeatures.length) * 100) : 0
     };
-  }, [rivers, segments, stations]);
+  }, [visibleRivers, visibleSegments, visibleStations]);
 
   const closeDrawer = useCallback(() => {
     setDrawer(null); setSelected(null); setRiverFacilities(null);
@@ -210,17 +255,33 @@ export default function App() {
   const neonMode = basemap === "neon";
   const effectiveUiTheme = uiTheme === "light" ? "light" : "dark";
 
+  const regionBounds = useMemo(() => {
+    if (!regionFilter || !visibleRivers?.features?.length) return null;
+    let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+    const visit = coordinates => {
+      if (!Array.isArray(coordinates)) return;
+      if (typeof coordinates[0] === "number" && typeof coordinates[1] === "number") {
+        west = Math.min(west, coordinates[0]); south = Math.min(south, coordinates[1]);
+        east = Math.max(east, coordinates[0]); north = Math.max(north, coordinates[1]);
+        return;
+      }
+      coordinates.forEach(visit);
+    };
+    visibleRivers.features.forEach(feature => visit(feature.geometry?.coordinates));
+    return Number.isFinite(west) ? [[west, south], [east, north], Date.now()] : null;
+  }, [regionFilter, visibleRivers]);
+
   useEffect(() => {
     document.documentElement.dataset.uiTheme = effectiveUiTheme;
     document.documentElement.style.colorScheme = effectiveUiTheme;
   }, [effectiveUiTheme]);
 
   const mapProps = {
-    rivers, segments: visibleSegments, stations: layers.stations ? stations : null,
+    rivers: visibleRivers, segments: visibleSegments, stations: layers.stations ? visibleStations : null,
     eeaSites: layers.eeaSites ? eeaSites : null,
     showSegments: layers.segments, showNetwork: layers.network !== false,
     showLabels: layers.labels, basemap, onRiverClick: handleRiverClick,
-    onStationClick: handleStationClick, selectedStation, flyTo,
+    onStationClick: handleStationClick, selectedStation, flyTo, fitBounds: regionBounds,
     riverFacilities: layers.facilities ? riverFacilities?.geojson : null
   };
 
@@ -237,6 +298,7 @@ export default function App() {
         <LayerControl layers={layers} onToggleLayer={toggleLayer}
           paramFilter={paramFilter} onParamChange={setParamFilter}
           basemap={basemap} onBasemapChange={setBasemap}
+          regions={regions} regionFilter={regionFilter} onRegionChange={setRegionFilter}
           uiTheme={effectiveUiTheme} onUiThemeChange={setUiTheme}
           view3D={view3D} onView3DChange={setView3D}
           levelsShown={levelsShown} onToggleLevel={toggleLevel}

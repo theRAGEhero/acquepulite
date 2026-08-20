@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { assembleConnectedWays, splitLongSourceSteps } from "./riverGeometry.js";
-import { combineLineGeometries, resolveOfficialGeometry, snapPointToGeometry, sliceLineBetweenSnaps } from "./hydrography.js";
+import { combineLineGeometries, resolveOfficialGeometry, simplifyGeometry, snapPointToGeometry, sliceLineBetweenSnaps } from "./hydrography.js";
 
 test("OSM ways connect only through identical endpoint node IDs", () => {
   const chains = assembleConnectedWays([
@@ -54,6 +54,17 @@ test("official disconnected water bodies stay MultiLineString", () => {
   ]);
   assert.equal(geometry.type, "MultiLineString");
   assert.equal(geometry.coordinates.length, 2);
+});
+
+test("display simplification preserves endpoints and river bends", () => {
+  const geometry = simplifyGeometry({
+    type: "LineString",
+    coordinates: [[9, 45], [9.00001, 45.00001], [9.5, 45.5], [10, 45], [10.00001, 45.00001]]
+  }, 0.00025);
+  assert.deepEqual(geometry.coordinates[0], [9, 45]);
+  assert.deepEqual(geometry.coordinates.at(-1), [10.00001, 45.00001]);
+  assert.ok(geometry.coordinates.some(point => point[0] === 9.5 && point[1] === 45.5));
+  assert.ok(geometry.coordinates.length < 5);
 });
 
 test("a unique exact official name is reviewable; ambiguous names are not guessed", () => {

@@ -19,10 +19,14 @@ import {
   geometryLines,
   loadOfficialHydrography,
   resolveOfficialGeometry,
+  simplifyGeometry,
   snapPointToGeometry,
   sliceLineBetweenSnaps
 } from "./hydrography.js";
 import { ARPA_REGIONS, MAJOR_ITALIAN_RIVERS, EEA_IED } from "./arpaRegistry.js";
+import {
+  GISCO_REGIONS_URL, ITALIAN_REGIONS, loadWiseNationalRivers, WISE_LICENSE_URL, WISE_STATUS_URL
+} from "./wiseNational.js";
 import { loadEeaData, hasEeaData, POLLUTANT_MAP } from "./eeaData.js";
 import { getLogStatus, getRecentLogs, log, serializeError } from "./logger.js";
 import { getNearbyPopulationContext, getRiverKnowledge } from "./wikimedia.js";
@@ -107,6 +111,7 @@ let store = {
   arpatStretches: new Map(),        // Regional water-body status assessments
   eea: null,                        // EEA industrial emissions dataset
   hydrography: null,                // versioned official line catalog
+  nationalBaseline: null,           // EEA WISE coverage for regions without a dedicated adapter
   arpaFetchedAt: null
 };
 
@@ -213,6 +218,17 @@ async function initArpa() {
     log.error("ARPA-LAZIO", `Lazio failed: ${e.message}`);
   }
 
+  // Dedicated adapters know their administrative source even when the
+  // original agency label contains extra text such as “(ARPAT)”. Keep a
+  // stable code alongside that human-readable attribution for filtering.
+  for (const river of allRivers) {
+    const region = ARPA_REGIONS.find(item => String(river.region || "")
+      .toLocaleLowerCase("it").includes(item.name.toLocaleLowerCase("it")));
+    if (!region) continue;
+    river.region_code = region.code;
+    river.region_codes = [region.code];
+  }
+
   store = {
     rivers: allRivers,
     stations: allStations,
@@ -220,6 +236,7 @@ async function initArpa() {
     arpatStretches,
     eea: null,
     hydrography: null,
+    nationalBaseline: null,
     arpaFetchedAt: new Date().toISOString()
   };
   log.info("BOOT", `Store ready: ${allRivers.length} rivers (all real agency data), ${allStations.length} stations`);
@@ -263,6 +280,19 @@ function normalizeOsmName(name) {
 async function initRiverGeometries() {
   try {
     store.hydrography = loadOfficialHydrography();
+    try {
+      const integratedRegionCodes = new Set(ARPA_REGIONS
+        .filter(region => region.status === "integrated")
+        .map(region => region.code));
+      store.nationalBaseline = loadWiseNationalRivers(store.hydrography, integratedRegionCodes);
+      for (const river of store.nationalBaseline.rivers) {
+        store.rivers.push(river);
+        store.arpatStretches.set(river.id, river);
+      }
+    } catch (error) {
+      markSourceFailure("EEA WISE national baseline", error);
+      log.error("WISE-NATIONAL", `National coverage failed: ${error.message}`);
+    }
     // Map river names to OSM search names for better Nominatim matching.
     // Key = our river name, Value = OSM search term.
     const osmNameMap = {
@@ -445,32 +475,38 @@ app.post("/api/client-errors", (req, res) => {
 });
 
 app.get("/api/regions", (_req, res) => {
-  const seen = new Set();
-  const regions = [];
-  for (const r of store.rivers) {
-    for (const reg of r.region.split("/")) {
-      const t = reg.trim();
-      if (!seen.has(t)) { seen.add(t); regions.push({ name: t, rivers: 0 }); }
-    }
-  }
-  for (const r of store.rivers) {
-    for (const reg of r.region.split("/")) {
-      const t = reg.trim();
-      const x = regions.find(x => x.name === t);
-      if (x) x.rivers++;
-    }
-  }
-  res.json(regions);
+  const integratedCodes = new Set(ARPA_REGIONS.filter(region => region.status === "integrated").map(region => region.code));
+  res.json(ITALIAN_REGIONS.map(region => ({
+    code: region.code,
+    name: region.name,
+    rivers: store.rivers.filter(river => (river.region_codes || [river.region_code]).includes(region.code)).length,
+    coverage: integratedCodes.has(region.code) ? "regional-agency" : "eea-wise-baseline"
+  })));
 });
 
-app.get("/api/rivers", (_req, res) => {
+function riverMatchesRegion(river, regionCode) {
+  if (!regionCode) return true;
+  return (river.region_codes || [river.region_code]).filter(Boolean).includes(regionCode);
+}
+
+function requestedRegion(req) {
+  const code = String(req.query.region || "").toUpperCase();
+  return ITALIAN_REGIONS.some(region => region.code === code) ? code : null;
+}
+
+app.get("/api/rivers", (req, res) => {
+  const regionCode = requestedRegion(req);
+  const displayTolerance = regionCode ? 0.00012 : 0.0012;
   res.json({
     type: "FeatureCollection",
-    features: store.rivers.filter(r => r.geom).map(r => ({
+    features: store.rivers.filter(river => river.geom && riverMatchesRegion(river, regionCode)).map(r => ({
       type: "Feature",
-      geometry: r.geom,
+      geometry: simplifyGeometry(r.geom, displayTolerance),
       properties: {
         id: r.id, name: r.name, region: r.region,
+        region_code: r.region_code || null,
+        region_codes: r.region_codes || (r.region_code ? [r.region_code] : []),
+        region_source_url: r.region_source_url || null,
         length_km: r.length_km, wfd_status: r.wfd_status,
         source: r.source || "ARPA",
         water_body_code: r.water_body_code || null,
@@ -485,7 +521,9 @@ app.get("/api/rivers", (_req, res) => {
         assessment_type: r.assessment_type || null,
         source_gaps: r.topology?.source_gaps ?? 0,
         artificial_connectors: r.topology?.artificial_connectors ?? 0,
-        data_available: store.arpaMeasurements.size > 0 || store.arpatStretches.has(r.id)
+        national_baseline: r.national_baseline === true,
+        data_available: store.arpatStretches.has(r.id) || store.stations.some(station =>
+          station.river_id === r.id && store.arpaMeasurements.has(station.id))
       }
     }))
   });
@@ -563,6 +601,10 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
       name: s.name, water_body_code: s.water_body_code, comune: s.comune, status: s.status,
       ecological: s.ecological, chemical: s.chemical,
       indicator: s.indicator || null, indicator_year: s.indicator_year || null,
+      ecological_assessment_year: s.ecological_assessment_year || null,
+      chemical_assessment_year: s.chemical_assessment_year || null,
+      ecological_confidence: s.ecological_confidence || null,
+      chemical_confidence: s.chemical_confidence || null,
       score: s.score, source_url: s.source_url || river.source_url || null,
       meets_wfd_objective: s.indicator
         ? ["Elevato", "Buono"].includes(s.status)
@@ -894,10 +936,10 @@ function buildSegments(paramFilter) {
   return { type: "FeatureCollection", features };
 }
 
-function buildAccurateSegments(paramFilter) {
+function buildAccurateSegments(paramFilter, regionCode = null) {
   const features = [];
   for (const river of store.rivers) {
-    if (!river.geom) continue;
+    if (!river.geom || !riverMatchesRegion(river, regionCode)) continue;
     const arpat = store.arpatStretches.get(river.id);
     if (arpat) {
       // WFD status is painted only on the matching official water-body line.
@@ -907,7 +949,7 @@ function buildAccurateSegments(paramFilter) {
         if (!stretch.geometry) continue;
         features.push({
           type: "Feature",
-          geometry: stretch.geometry,
+          geometry: simplifyGeometry(stretch.geometry, regionCode ? 0.00012 : 0.0012),
           properties: {
             river_id: river.id,
             river_name: river.name,
@@ -926,6 +968,10 @@ function buildAccurateSegments(paramFilter) {
             source_period: river.source_period || null,
             assessment_type: river.assessment_type || null,
             region: river.region,
+            region_code: river.region_code || null,
+            region_codes: river.region_codes || [],
+            region_source_url: river.region_source_url || null,
+            national_baseline: river.national_baseline === true,
             geometry_source: stretch.geometry_source,
             source_feature_id: stretch.source_feature_id,
             geometry_quality: "official",
@@ -1000,7 +1046,7 @@ function buildAccurateSegments(paramFilter) {
 
 app.get("/api/rivers-segments", (req, res) => {
   const param = req.query.param || null;
-  res.json(buildAccurateSegments(param));
+  res.json(buildAccurateSegments(param, requestedRegion(req)));
 });
 
 // --- Stations as GeoJSON ----------------------------------------------------
@@ -1413,6 +1459,7 @@ app.get("/api/arpa-regions", (_req, res) => {
   res.json({
     count: ARPA_REGIONS.length,
     integrated: ARPA_REGIONS.filter(r => r.status === "integrated").length,
+    nationally_covered: ITALIAN_REGIONS.length,
     regions: ARPA_REGIONS
   });
 });
@@ -1422,14 +1469,24 @@ app.get("/api/data-sources", (_req, res) => {
   const integratedRegions = ARPA_REGIONS.filter(region => region.status === "integrated");
   res.json({
     water_quality: {
-      source: "Official regional environmental agencies",
-      dataset: `${integratedRegions.length} integrated regional datasets`,
+      source: "Official regional environmental agencies + EEA WISE WFD",
+      dataset: `${ITALIAN_REGIONS.length}/20 regions covered; ${integratedRegions.length} dedicated agency adapters`,
       license: "Dataset-specific open terms",
       source_url: "https://www.snpambiente.it/",
       license_url: null,
-      coverage: integratedRegions.map(region => region.name).join(", "),
-      other_regions: ARPA_REGIONS.filter(r => r.status !== "integrated").length + " regions researched, pending integration",
+      coverage: ITALIAN_REGIONS.map(region => region.name).join(", "),
+      other_regions: "0 regions without official WFD baseline coverage",
       regions: ARPA_REGIONS,
+      national_baseline: {
+        name: "EEA WISE WFD 2022",
+        source_url: WISE_STATUS_URL,
+        license: "EEA standard re-use policy / CC BY 4.0",
+        license_url: WISE_LICENSE_URL,
+        region_boundary_source: GISCO_REGIONS_URL,
+        records: store.nationalBaseline?.metadata?.records || 0,
+        rivers: store.nationalBaseline?.rivers?.length || 0,
+        fallback_regions: ITALIAN_REGIONS.filter(region => !integratedRegions.some(item => item.code === region.code)).map(region => region.name)
+      },
       sources: integratedRegions.map(region => ({
         name: region.arpa, region: region.name, dataset: region.water_quality_dataset,
         source_url: region.dataset_url || region.portal,

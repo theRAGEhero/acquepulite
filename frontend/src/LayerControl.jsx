@@ -25,6 +25,7 @@ const QUALITY_LEVELS = [
 
 export default function LayerControl({
   layers, onToggleLayer, paramFilter, onParamChange, basemap, onBasemapChange,
+  regions, regionFilter, onRegionChange,
   uiTheme, onUiThemeChange,
   view3D, onView3DChange, levelsShown, onToggleLevel, onOpenSources,
   sourceDrawerOpen, metrics, updatedAt
@@ -36,7 +37,7 @@ export default function LayerControl({
     layers.segments, layers.labels, view3D && layers.terrain
   ].filter(Boolean).length, [layers, view3D]);
   const activeLevels = QUALITY_LEVELS.filter(([key]) => levelsShown[key]).length;
-  const filtersChanged = Boolean(paramFilter) || activeLevels !== QUALITY_LEVELS.length;
+  const filtersChanged = Boolean(paramFilter) || Boolean(regionFilter) || activeLevels !== QUALITY_LEVELS.length;
   const pollutantLabel = POLLUTANTS.find(([value]) => value === (paramFilter || ""))?.[1] || "All pollutants";
 
   useEffect(() => {
@@ -55,6 +56,7 @@ export default function LayerControl({
   const togglePanel = name => setPanel(current => current === name ? null : name);
   const resetFilters = () => {
     onParamChange(null);
+    onRegionChange(null);
     QUALITY_LEVELS.forEach(([key]) => onToggleLevel(key, true));
   };
 
@@ -176,6 +178,19 @@ export default function LayerControl({
       {panel === "filters" && (
         <ControlPanel id="filters-panel" className="tool-panel" title="Quality filters"
           eyebrow={filtersChanged ? "Custom view" : "All data"} onClose={() => setPanel(null)}>
+          <ControlGroup label="Geographic coverage">
+            <select className="pollutant-select" value={regionFilter || ""}
+              onChange={event => onRegionChange(event.target.value || null)}>
+              <option value="">All Italy — 20 regions</option>
+              {(regions || []).map(region => (
+                <option key={region.code} value={region.code}>
+                  {region.name} — {region.rivers} rivers
+                </option>
+              ))}
+            </select>
+            <p className="control-help">Selecting a region filters rivers, reaches and stations, then fits the map to its monitored network.</p>
+          </ControlGroup>
+
           <ControlGroup label="Color monitored reaches by">
             <select className="pollutant-select" value={paramFilter || ""}
               onChange={event => onParamChange(event.target.value || null)}>
