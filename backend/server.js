@@ -1047,8 +1047,20 @@ app.get("/api/stations/:id/nearby-facilities", asyncRoute(async (req, res) => {
       fetched_at: new Date().toISOString()
     });
   } catch (e) {
-    log.error("API", `nearby-facilities failed for ${station.id}`, { error: e.message });
-    res.status(502).json({ error: "Failed to query nearby facilities", detail: e.message });
+    log.warn("OVERPASS", `Station facility enrichment unavailable for ${station.id}`, { error: e.message });
+    // Overpass is optional enrichment. Return a usable empty result instead of
+    // turning a public mirror outage into an application-level 5xx response.
+    res.json({
+      station: { id: station.id, name: station.name, lat: station.lat, lon: station.lon },
+      radius_m: radius, count: 0, facilities: [],
+      source: "OpenStreetMap (Overpass API)",
+      source_url: "https://wiki.openstreetmap.org/wiki/Overpass_API",
+      license_url: "https://www.openstreetmap.org/copyright",
+      osm_status: "unavailable",
+      warning: "OpenStreetMap enrichment is temporarily unavailable. EEA registry results are shown separately.",
+      retry_after_seconds: 30,
+      fetched_at: new Date().toISOString()
+    });
   }
 }));
 
@@ -1060,10 +1072,12 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
   const startedAt = Date.now();
   const cacheKey = `${river.id}:${radius}:${sourceMode}`;
   const cached = riverFacilityCache.get(cacheKey);
-  if (cached && Date.now() - cached.savedAt < (cached.ttlMs || RIVER_FACILITY_CACHE_MS)) return res.json(cached.value);
+  const forceRefresh = req.query.refresh === "1";
+  if (!forceRefresh && cached && Date.now() - cached.savedAt < (cached.ttlMs || RIVER_FACILITY_CACHE_MS)) return res.json(cached.value);
 
   let osmFacilities = [];
   let osmError = null;
+  let osmQueryMeta = null;
   let osmSkippedReason = null;
 
   let indexedEea = { sites: [], candidateCount: 0 };
@@ -1104,10 +1118,18 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
       osmSkippedReason = "Local EEA registry already provides high corridor coverage";
     } else {
       try {
-        osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
+        const osmResult = await queryFacilitiesAlongRiver(river.geom, radius);
+        osmFacilities = osmResult.facilities;
+        osmQueryMeta = osmResult.meta;
       } catch (error) {
         osmError = error.message;
-        log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
+        osmQueryMeta = {
+          query_chunks: null, successful_chunks: 0, failed_chunks: null,
+          partial: false, failures: (error.failures || []).slice(0, 8)
+        };
+        log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`, {
+          failures: osmQueryMeta.failures
+        });
       }
     }
   }
@@ -1150,8 +1172,11 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
     count: facilities.length, osm_count: finalOsmCount, eea_count: finalEeaCount,
     osm_records_matched: osmFacilities.length, eea_records_matched: eeaFacilities.length,
     source_mode: sourceMode,
-    osm_status: sourceMode === "eea" ? "not_requested" : osmSkippedReason ? "deferred" : osmError ? "unavailable" : "complete",
+    osm_status: sourceMode === "eea" ? "not_requested" : osmSkippedReason ? "deferred" : osmError ? "unavailable" : osmQueryMeta?.partial ? "partial" : "complete",
     osm_skip_reason: osmSkippedReason,
+    osm_query_chunks: osmQueryMeta?.query_chunks ?? null,
+    osm_successful_chunks: osmQueryMeta?.successful_chunks ?? null,
+    osm_failed_chunks: osmQueryMeta?.failed_chunks ?? null,
     eea_status: eeaError ? "unavailable" : "complete",
     eea_candidates_scanned: indexedEea.candidateCount,
     query_duration_ms: Date.now() - startedAt,
@@ -1162,16 +1187,18 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
     ],
     warning: [
       osmError ? "OpenStreetMap enrichment is temporarily unavailable. EEA registry results remain available." : null,
+      osmQueryMeta?.partial ? `OpenStreetMap returned partial coverage (${osmQueryMeta.successful_chunks}/${osmQueryMeta.query_chunks} corridor sections).` : null,
       eeaError ? `EEA registry lookup unavailable: ${eeaError}. Showing OpenStreetMap results.` : null
     ].filter(Boolean).join(" ") || null,
     osm_error_detail: osmError,
-    osm_retry_after_seconds: osmError ? 120 : null,
+    osm_failure_diagnostics: osmQueryMeta?.failures || [],
+    osm_retry_after_seconds: osmError || osmQueryMeta?.partial ? 30 : null,
     fetched_at: new Date().toISOString()
   };
   riverFacilityCache.set(cacheKey, {
     savedAt: Date.now(), value,
     // Do not preserve a transient external outage for the full successful-result TTL.
-    ttlMs: osmError || eeaError ? 2 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
+    ttlMs: osmError || eeaError || osmQueryMeta?.partial ? 30 * 1000 : RIVER_FACILITY_CACHE_MS
   });
   res.json(value);
 }));

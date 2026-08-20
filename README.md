@@ -25,6 +25,11 @@ adds community-mapped facilities. EEA candidates are selected with a spatial
 grid before exact distance-to-river calculation, rather than scanning the full
 registry on every click.
 
+OpenStreetMap enrichment divides long river paths into compact overlapping
+corridor queries and deduplicates the returned objects locally. Individual
+mirror or corridor failures produce a retryable partial-coverage result; they do
+not discard EEA records or turn the facility endpoint into an application 5xx.
+
 ## Data sources (all real, no sample data)
 
 | Source | Region | Data | Access |

@@ -26,6 +26,7 @@ export default function FacilitiesPanel({ station, onClose, onFacilityClick }) {
   const [radius, setRadius] = useState(3000);
   const [eea, setEea] = useState(null);
   const [eeaLoading, setEeaLoading] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +48,7 @@ export default function FacilitiesPanel({ station, onClose, onFacilityClick }) {
       .then(d => { setEea(d); setEeaLoading(false); })
       .catch(error => { if (error.name !== "AbortError") setEeaLoading(false); });
     return () => controller.abort();
-  }, [station.id, radius]);
+  }, [station.id, radius, attempt]);
 
   const grouped = {};
   if (data) {
@@ -122,7 +123,14 @@ export default function FacilitiesPanel({ station, onClose, onFacilityClick }) {
       {loading && <div className="loading">Querying OpenStreetMap…</div>}
       {error && <div className="loading" style={{ color: "#f87171" }}>Error: {error}</div>}
 
-      {data && data.count === 0 && (
+      {data?.warning && (
+        <div className="facility-warning partial">
+          <strong>Partial coverage</strong>{data.warning}
+          <button className="show-companies" onClick={() => setAttempt(value => value + 1)} disabled={loading}>Retry OSM scan</button>
+        </div>
+      )}
+
+      {data && data.count === 0 && data.osm_status !== "unavailable" && (
         <div className="loading">No facilities found within {radius / 1000} km</div>
       )}
 

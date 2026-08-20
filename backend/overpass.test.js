@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCorridorQuery, distanceToRiverMeters } from "./overpass.js";
+import { buildCorridorQueries, buildCorridorQuery, distanceToRiverMeters } from "./overpass.js";
 
 test("facility corridor distance follows the river segment instead of its bounding box", () => {
   const river = { type: "LineString", coordinates: [[9, 45], [10, 45]] };
@@ -26,4 +26,19 @@ test("river facility query excludes unbounded farmland and railway scans", () =>
   assert.match(query, /landfill/);
   const path = query.match(/\(around:3000,([^)]*)\)/)?.[1] || "";
   assert.ok(path.split(",").length / 2 <= 28);
+});
+
+test("long river corridors are split into compact overlapping Overpass queries", () => {
+  const coordinates = Array.from({ length: 100 }, (_, index) => [9 + index / 100, 45]);
+  const queries = buildCorridorQueries({ type: "LineString", coordinates }, 3000);
+  assert.ok(queries.length >= 3);
+  for (const query of queries) {
+    assert.doesNotMatch(query, /farmland|railway/);
+    assert.ok(query.length < 1300);
+    const path = query.match(/\(around:3000,([^)]*)\)/)?.[1] || "";
+    assert.ok(path.split(",").length / 2 <= 10);
+  }
+  const firstPath = queries[0].match(/\(around:3000,([^)]*)\)/)?.[1];
+  const secondPath = queries[1].match(/\(around:3000,([^)]*)\)/)?.[1];
+  assert.equal(firstPath.split(",").slice(-2).join(","), secondPath.split(",").slice(0, 2).join(","));
 });

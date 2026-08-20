@@ -24,7 +24,7 @@ function scoreColor(score) {
 }
 
 export default function RiverPanel({
-  river, onStationClick, facilities, facilitiesLoading, facilitiesError
+  river, onStationClick, facilities, facilitiesLoading, facilitiesError, onFacilitiesRetry
 }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +135,7 @@ export default function RiverPanel({
         onRetry={() => setPopulationAttempt(value => value + 1)} />
 
       <RiverCompanies data={facilities} loading={facilitiesLoading} error={facilitiesError}
-        onCompanyClick={onStationClick} />
+        onCompanyClick={onStationClick} onRetry={onFacilitiesRetry} />
 
       {loading && <div className="loading">Loading pollution data…</div>}
       {summaryError && <div className="service-state error">
@@ -321,7 +321,7 @@ function geometrySourceUrl(river) {
   return river.source_url || "https://water.europa.eu/freshwater";
 }
 
-function RiverCompanies({ data, loading, error, onCompanyClick }) {
+function RiverCompanies({ data, loading, error, onCompanyClick, onRetry }) {
   const [showAll, setShowAll] = useState(false);
   const [category, setCategory] = useState("all");
   useEffect(() => { setShowAll(false); setCategory("all"); }, [data?.river?.id]);
@@ -345,14 +345,20 @@ function RiverCompanies({ data, loading, error, onCompanyClick }) {
         <span className={data.eea_status === "unavailable" ? "unavailable" : "complete"}>
           EEA registry · {data.eea_status === "unavailable" ? "unavailable" : `${data.eea_count} records`}
         </span>
-        <span className={data.osm_status === "unavailable" ? "unavailable" : data.osm_status === "loading" ? "loading" : data.osm_status === "deferred" ? "deferred" : "complete"}
+        <span className={data.osm_status === "unavailable" ? "unavailable" : data.osm_status === "partial" ? "deferred" : data.osm_status === "loading" ? "loading" : data.osm_status === "deferred" ? "deferred" : "complete"}
           title={data.osm_skip_reason || undefined}>
-          OSM enrichment · {data.osm_status === "unavailable" ? "temporarily unavailable" : data.osm_status === "loading" ? "checking" : data.osm_status === "deferred" ? "deferred · strong EEA coverage" : `${data.osm_count} records`}
+          OSM enrichment · {data.osm_status === "unavailable" ? "temporarily unavailable" : data.osm_status === "partial" ? `partial · ${data.osm_count} records` : data.osm_status === "loading" ? "checking" : data.osm_status === "deferred" ? "deferred · strong EEA coverage" : `${data.osm_count} records`}
         </span>
       </div>}
-      {data?.warning && (data.count === 0 || data.eea_status === "unavailable") &&
-        <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}</div>}
-      {data && data.count === 0 && !loading && <div className="loading">No mapped companies found in this corridor.</div>}
+      {data?.warning && (data.count === 0 || data.eea_status === "unavailable" || data.osm_status === "partial") &&
+        <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}
+          {(data.osm_status === "unavailable" || data.osm_status === "partial") && onRetry &&
+            <button className="show-companies" onClick={onRetry} disabled={loading}>Retry OSM scan</button>}
+        </div>}
+      {data && data.count === 0 && !loading && data.osm_status !== "unavailable" &&
+        <div className="loading">No mapped companies found in this corridor.</div>}
+      {data && data.count === 0 && !loading && data.osm_status === "unavailable" &&
+        <div className="loading">No EEA registry matches. The OSM scan is unavailable, so absence of nearby companies is not confirmed.</div>}
       {data && data.count > 0 && (
         <>
           <div className="facility-toolbar">

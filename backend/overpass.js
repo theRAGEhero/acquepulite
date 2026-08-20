@@ -5,10 +5,11 @@
 import { log } from "./logger.js";
 
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+  "https://overpass.private.coffee/api/interpreter"
 ];
+const endpointHealth = new Map();
 
 // OSM tag presets per category
 const CATEGORY_QUERIES = {
@@ -69,11 +70,7 @@ const CORRIDOR_FILTERS = [
   '["industrial"]',
   '["landuse"~"industrial|quarry|landfill|port"]',
   '["man_made"~"wastewater_plant|pumping_station|storage_tank|mine|tailings|pipeline"]',
-  '["building"="industrial"]["name"]',
-  '["craft"~"chemical|plating|brewery|sawmill|winery|pottery"]',
-  '["amenity"~"fuel|animal_boarding|loading_dock"]',
-  '["facility"~"wastewater|water_works"]',
-  '["farm"]["name"]'
+  '["amenity"~"fuel|animal_boarding|loading_dock"]'
 ];
 
 function buildQuery(lat, lon, radius) {
@@ -111,9 +108,58 @@ export function buildCorridorQuery(geometry, radius) {
   return `[out:json][timeout:14];(${filters});out tags center 2000;`;
 }
 
-async function tryOverpass(query, timeoutMs = 20000) {
-  const attempts = OVERPASS_ENDPOINTS.map(async url => {
-      log.debug("OVERPASS", `Trying ${url}`);
+function corridorPaths(geometry, maximumPoints = 28, maximumPointsPerQuery = 10) {
+  const lines = geometryLines(geometry).filter(line => line.length > 0);
+  const totalVertices = lines.reduce((sum, line) => sum + line.length, 0) || 1;
+  const paths = [];
+  for (const line of lines) {
+    const allowance = Math.max(2, Math.round(maximumPoints * line.length / totalVertices));
+    const sampled = downsampleLine(line, allowance);
+    if (sampled.length <= maximumPointsPerQuery) {
+      paths.push(sampled);
+      continue;
+    }
+    for (let start = 0; start < sampled.length - 1; start += maximumPointsPerQuery - 1) {
+      const chunk = sampled.slice(start, start + maximumPointsPerQuery);
+      if (chunk.length > 1) paths.push(chunk);
+    }
+  }
+  return paths;
+}
+
+export function buildCorridorQueries(geometry, radius) {
+  return corridorPaths(geometry).map(path => {
+    const coordinates = path
+      .map(([lon, lat]) => `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`).join(",");
+    const corridor = `(around:${radius},${coordinates})`;
+    const filters = CORRIDOR_FILTERS.map(tags => `nwr${tags}${corridor};`).join("");
+    return `[out:json][timeout:10];(${filters});out tags center 750;`;
+  });
+}
+
+function endpointName(url) {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
+function endpointOrder() {
+  const now = Date.now();
+  let available = OVERPASS_ENDPOINTS.filter(url => (endpointHealth.get(url)?.cooldownUntil || 0) <= now);
+  if (!available.length) {
+    available = [...OVERPASS_ENDPOINTS].sort((a, b) =>
+      (endpointHealth.get(a)?.cooldownUntil || 0) - (endpointHealth.get(b)?.cooldownUntil || 0)
+    ).slice(0, 1);
+  }
+  return available;
+}
+
+async function tryOverpass(query, timeoutMs = 10000) {
+  const failures = [];
+  // Two mirrors per compact query is enough redundancy without sending the
+  // same request to every free public server simultaneously.
+  for (const url of endpointOrder().slice(0, 2)) {
+    const startedAt = Date.now();
+    try {
+      log.debug("OVERPASS", `Trying ${url}`, { query_bytes: query.length });
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -124,17 +170,35 @@ async function tryOverpass(query, timeoutMs = 20000) {
         body: "data=" + encodeURIComponent(query),
         signal: AbortSignal.timeout(timeoutMs)
       });
-      if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+      if (!res.ok) {
+        const retryAfter = Number(res.headers.get("retry-after")) || 0;
+        const cooldownMs = res.status === 429 ? Math.max(30_000, retryAfter * 1000)
+          : res.status >= 500 ? 45_000 : 15_000;
+        endpointHealth.set(url, { cooldownUntil: Date.now() + cooldownMs, status: res.status });
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = await res.json();
-      log.debug("OVERPASS", `Got ${data.elements?.length || 0} elements from ${url}`);
+      endpointHealth.set(url, { cooldownUntil: 0, status: 200 });
+      log.debug("OVERPASS", `Got ${data.elements?.length || 0} elements from ${url}`, {
+        duration_ms: Date.now() - startedAt, query_bytes: query.length
+      });
       return data;
-  });
-  try {
-    return await Promise.any(attempts);
-  } catch (error) {
-    for (const failure of error.errors || []) log.warn("OVERPASS", failure.message);
-    throw new Error("All Overpass endpoints failed");
+    } catch (error) {
+      if (!endpointHealth.has(url) || endpointHealth.get(url).status === 200) {
+        endpointHealth.set(url, { cooldownUntil: Date.now() + 20_000, status: "network" });
+      }
+      const failure = {
+        endpoint: endpointName(url),
+        reason: error?.name === "TimeoutError" ? "timeout" : error.message,
+        duration_ms: Date.now() - startedAt
+      };
+      failures.push(failure);
+      log.warn("OVERPASS", `Mirror failed: ${failure.endpoint} (${failure.reason})`, failure);
+    }
   }
+  const error = new Error(`Overpass mirrors unavailable: ${failures.map(item => `${item.endpoint} ${item.reason}`).join("; ")}`);
+  error.failures = failures;
+  throw error;
 }
 
 function distanceMeters(lat1, lon1, lat2, lon2) {
@@ -234,12 +298,32 @@ export async function queryNearbyFacilities(lat, lon, radius = 3000) {
 }
 
 export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
-  const query = buildCorridorQuery(geometry, radius);
-  log.info("OVERPASS", `Querying facilities within ${radius}m of river geometry`);
-  const data = await tryOverpass(query, 16000);
+  const queries = buildCorridorQueries(geometry, radius);
+  log.info("OVERPASS", `Querying facilities within ${radius}m of river geometry`, { chunks: queries.length });
+  const results = new Array(queries.length);
+  let nextQuery = 0;
+  const workers = Array.from({ length: Math.min(2, queries.length) }, async () => {
+    while (nextQuery < queries.length) {
+      const index = nextQuery++;
+      try {
+        results[index] = { ok: true, data: await tryOverpass(queries[index], 12000) };
+      } catch (error) {
+        results[index] = { ok: false, error };
+      }
+    }
+  });
+  await Promise.all(workers);
+  const successful = results.filter(result => result?.ok);
+  const failed = results.filter(result => result && !result.ok);
+  if (!successful.length) {
+    const error = new Error(`All ${queries.length} compact Overpass corridor queries failed`);
+    error.failures = failed.flatMap(result => result.error?.failures || []);
+    throw error;
+  }
+  const elements = successful.flatMap(result => result.data?.elements || []);
   const seen = new Set();
   const facilities = [];
-  for (const el of data.elements || []) {
+  for (const el of elements) {
     const lat = el.lat ?? el.center?.lat;
     const lon = el.lon ?? el.center?.lon;
     if (lat == null || lon == null) continue;
@@ -259,7 +343,15 @@ export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
     });
   }
   facilities.sort((a, b) => a.distance_to_river_m - b.distance_to_river_m);
-  return facilities;
+  const meta = {
+    query_chunks: queries.length,
+    successful_chunks: successful.length,
+    failed_chunks: failed.length,
+    partial: failed.length > 0,
+    failures: failed.flatMap(result => result.error?.failures || []).slice(0, 8)
+  };
+  log.info("OVERPASS", `Corridor query completed: ${facilities.length} facilities`, meta);
+  return { facilities, meta };
 }
 
 export { CATEGORY_LABELS };

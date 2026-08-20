@@ -22,6 +22,7 @@ export default function App() {
   const [riverFacilities, setRiverFacilities] = useState(null);
   const [riverFacilitiesLoading, setRiverFacilitiesLoading] = useState(false);
   const [riverFacilitiesError, setRiverFacilitiesError] = useState(null);
+  const [riverFacilitiesAttempt, setRiverFacilitiesAttempt] = useState(0);
   const [view3D, setView3D] = usePersistentState("view3d", false);
   const [uiTheme, setUiTheme] = usePersistentState("uiTheme", "dark");
   const [layers, setLayers] = usePersistentState("layers", {
@@ -107,7 +108,8 @@ export default function App() {
     setRiverFacilitiesError(null);
     setRiverFacilitiesLoading(true);
 
-    const endpoint = `/api/rivers/${selected.id}/nearby-facilities?radius=3000`;
+    const refresh = riverFacilitiesAttempt > 0 ? "&refresh=1" : "";
+    const endpoint = `/api/rivers/${selected.id}/nearby-facilities?radius=3000${refresh}`;
     const eeaRequest = apiFetch(`${endpoint}&source=eea`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
@@ -151,9 +153,10 @@ export default function App() {
         setRiverFacilitiesLoading(false);
       });
     return () => controller.abort();
-  }, [selected?.id]);
+  }, [selected?.id, riverFacilitiesAttempt]);
 
   const handleRiverClick = useCallback(props => {
+    setRiverFacilitiesAttempt(0);
     setSelected({
       id: props.id, name: props.name, region: props.region,
       length_km: props.length_km, wfd_status: props.wfd_status,
@@ -262,7 +265,8 @@ export default function App() {
               {drawer === "river" && selected
                 ? <RiverPanel river={selected} onStationClick={handleStationClick}
                     facilities={riverFacilities} facilitiesLoading={riverFacilitiesLoading}
-                    facilitiesError={riverFacilitiesError} />
+                    facilitiesError={riverFacilitiesError}
+                    onFacilitiesRetry={() => setRiverFacilitiesAttempt(value => value + 1)} />
                 : <DataSourcesPanel />}
             </div>
           </section>
