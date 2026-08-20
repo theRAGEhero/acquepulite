@@ -13,7 +13,7 @@ instead of asserted facts.
 
 ## Map controls
 
-- **Workspace menu:** switch between 2D/3D, select the basemap, and open system/data provenance.
+- **Workspace menu:** switch between 2D/3D, choose a persistent light or dark interface, select the basemap independently, and open system/data provenance.
 - **Layers:** manage hydrography, quality reaches, labels, stations, river-corridor companies, EEA sites, and terrain directly on the map.
 - **Filters:** choose the pollutant used for reach coloring and toggle visible severity classes. The compact quality legend opens the same filter panel.
 

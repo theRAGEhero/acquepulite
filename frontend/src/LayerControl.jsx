@@ -25,6 +25,7 @@ const QUALITY_LEVELS = [
 
 export default function LayerControl({
   layers, onToggleLayer, paramFilter, onParamChange, basemap, onBasemapChange,
+  uiTheme, onUiThemeChange,
   view3D, onView3DChange, levelsShown, onToggleLevel, onOpenSources,
   sourceDrawerOpen, metrics, updatedAt
 }) {
@@ -94,6 +95,21 @@ export default function LayerControl({
             <div className="control-segmented" role="group" aria-label="Map dimension">
               <button className={!view3D ? "active" : ""} onClick={() => onView3DChange(false)}>2D map</button>
               <button className={view3D ? "active" : ""} onClick={() => onView3DChange(true)}>3D terrain</button>
+            </div>
+          </ControlGroup>
+
+          <ControlGroup label="Interface theme">
+            <div className="theme-selector" role="group" aria-label="Interface theme">
+              <button type="button" className={uiTheme === "light" ? "active" : ""}
+                aria-pressed={uiTheme === "light"} onClick={() => onUiThemeChange("light")}>
+                <Icon name="sun" />
+                <span><strong>Light</strong><small>Bright dashboard</small></span>
+              </button>
+              <button type="button" className={uiTheme === "dark" ? "active" : ""}
+                aria-pressed={uiTheme === "dark"} onClick={() => onUiThemeChange("dark")}>
+                <Icon name="moon" />
+                <span><strong>Dark</strong><small>Operations room</small></span>
+              </button>
             </div>
           </ControlGroup>
 
@@ -249,7 +265,9 @@ function Icon({ name }) {
     database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
     arrow: <><path d="M5 12h14M14 7l5 5-5 5"/></>,
     check: <><path d="m5 12 4 4L19 6"/></>,
-    minus: <><path d="M6 12h12"/></>
+    minus: <><path d="M6 12h12"/></>,
+    sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></>,
+    moon: <><path d="M20.5 14.3A8.5 8.5 0 0 1 9.7 3.5 8.5 8.5 0 1 0 20.5 14.3Z"/></>
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;

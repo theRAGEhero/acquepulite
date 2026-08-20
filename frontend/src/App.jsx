@@ -20,6 +20,7 @@ export default function App() {
   const [riverFacilitiesLoading, setRiverFacilitiesLoading] = useState(false);
   const [riverFacilitiesError, setRiverFacilitiesError] = useState(null);
   const [view3D, setView3D] = usePersistentState("view3d", false);
+  const [uiTheme, setUiTheme] = usePersistentState("uiTheme", "dark");
   const [layers, setLayers] = usePersistentState("layers", {
     stations: true, network: true, segments: true, labels: true,
     terrain: true, facilities: false, eeaSites: false
@@ -143,6 +144,13 @@ export default function App() {
   const toggleLevel = useCallback((key, value) => setLevelsShown(previous => ({ ...previous, [key]: value })), [setLevelsShown]);
   const handleStationClick = useCallback((lat, lon) => setFlyTo([lat, lon, Date.now()]), []);
   const neonMode = basemap === "neon";
+  const effectiveUiTheme = uiTheme === "light" ? "light" : "dark";
+
+  useEffect(() => {
+    document.documentElement.dataset.uiTheme = effectiveUiTheme;
+    document.documentElement.style.colorScheme = effectiveUiTheme;
+  }, [effectiveUiTheme]);
+
   const mapProps = {
     rivers, segments: visibleSegments, stations: layers.stations ? stations : null,
     eeaSites: layers.eeaSites ? eeaSites : null,
@@ -153,7 +161,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${neonMode ? "neon-mode" : ""}`}>
+    <div className={`app ${neonMode ? "neon-mode" : ""} ${effectiveUiTheme === "light" ? "light-ui" : "dark-ui"}`}>
       <main className="map-wrap">
         <header className="title-card">
           <span className="system-mark">RW//IT</span>
@@ -165,6 +173,7 @@ export default function App() {
         <LayerControl layers={layers} onToggleLayer={toggleLayer}
           paramFilter={paramFilter} onParamChange={setParamFilter}
           basemap={basemap} onBasemapChange={setBasemap}
+          uiTheme={effectiveUiTheme} onUiThemeChange={setUiTheme}
           view3D={view3D} onView3DChange={setView3D}
           levelsShown={levelsShown} onToggleLevel={toggleLevel}
           sourceDrawerOpen={drawer === "sources"}

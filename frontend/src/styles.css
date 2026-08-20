@@ -1375,3 +1375,259 @@ html, body, #root {
   .control-status-grid > div { padding: 7px; }
   .severity-grid { gap: 4px; }
 }
+
+/* ============ INTERFACE THEME ============ */
+
+.theme-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding-bottom: 8px;
+}
+.theme-selector button {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 7px 9px;
+  color: #789aaa;
+  text-align: left;
+  background: rgba(7, 21, 34, .75);
+  border: 1px solid rgba(64, 114, 134, .16) !important;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.theme-selector button:hover { color: #dff7ff; border-color: rgba(45, 212, 255, .42) !important; }
+.theme-selector button.active { color: #dffaff; background: rgba(20, 90, 117, .28); border-color: #2dd4ff !important; }
+.theme-selector svg { width: 20px; color: #2dd4ff; }
+.theme-selector strong, .theme-selector small { display: block; }
+.theme-selector strong { font-size: 10px; }
+.theme-selector small { margin-top: 2px; color: #5f8190; font-size: 8px; }
+
+.app.light-ui {
+  color-scheme: light;
+  color: #17384a;
+  background: #e9f1f5;
+}
+
+.app.light-ui .title-card,
+.app.light-ui .monitoring-hud,
+.app.light-ui .workspace-menu-btn,
+.app.light-ui .map-tool-btn,
+.app.light-ui .map-quality-key {
+  color: #17384a;
+  background: rgba(250, 253, 255, .94);
+  border-color: rgba(28, 100, 132, .24) !important;
+  box-shadow: 0 8px 24px rgba(25, 57, 73, .13);
+}
+.app.light-ui .title-card { color: #102f40; }
+.app.light-ui .title-card small,
+.app.light-ui .hud-metric span,
+.app.light-ui .hud-clock,
+.app.light-ui .quality-key-heading,
+.app.light-ui .quality-key-range { color: #607d8c; }
+.app.light-ui .hud-metric strong { color: #102f40; }
+.app.light-ui .live-state,
+.app.light-ui .system-mark { color: #087c5a; }
+.app.light-ui .live-state,
+.app.light-ui .hud-metric,
+.app.light-ui .hud-clock { border-color: rgba(28, 100, 132, .14); }
+.app.light-ui .workspace-menu-btn:hover,
+.app.light-ui .workspace-menu-btn.active,
+.app.light-ui .map-tool-btn:hover {
+  color: #045f7e;
+  background: #fff;
+  border-color: rgba(0, 132, 173, .58) !important;
+}
+.app.light-ui .map-tool-btn.active {
+  color: #fff;
+  background: #087fa6;
+  border-color: #087fa6 !important;
+  box-shadow: 0 8px 20px rgba(8, 127, 166, .25);
+}
+.app.light-ui .map-tool-badge { color: #fff; background: #28647d; }
+.app.light-ui .map-tool-btn.active .map-tool-badge { color: #07526b; background: rgba(255, 255, 255, .72); }
+.app.light-ui .quality-key-current { color: #315f73; }
+
+.app.light-ui .map-control-panel {
+  color: #17384a;
+  background: rgba(250, 253, 255, .985);
+  border-color: rgba(28, 100, 132, .25);
+  box-shadow: 0 18px 48px rgba(26, 56, 72, .22);
+}
+.app.light-ui .control-panel-header {
+  background: linear-gradient(100deg, #e5f3f8, #f8fbfc);
+  border-bottom-color: rgba(28, 100, 132, .16);
+}
+.app.light-ui .control-panel-header span,
+.app.light-ui .control-group h3 { color: #41778e; }
+.app.light-ui .control-panel-header h2 { color: #123244; }
+.app.light-ui .control-panel-header button {
+  color: #4f7586;
+  background: #f1f7f9;
+  border-color: rgba(28, 100, 132, .17) !important;
+}
+.app.light-ui .control-panel-header button:hover { color: #075f7c; border-color: #58a9c4 !important; }
+.app.light-ui .control-panel-body { scrollbar-color: #9ebdca transparent; }
+.app.light-ui .control-group { border-bottom-color: rgba(45, 99, 121, .12); }
+.app.light-ui .control-status-grid > div {
+  background: #eef6f9;
+  border-color: rgba(45, 111, 137, .16);
+}
+.app.light-ui .control-status-grid span { color: #607f8e; }
+.app.light-ui .control-status-grid strong { color: #17384a; }
+.app.light-ui .control-segmented { background: #e5eef2; }
+.app.light-ui .control-segmented button { color: #557484; }
+.app.light-ui .control-segmented button.active { color: #fff; background: #087fa6; }
+
+.app.light-ui .theme-selector button,
+.app.light-ui .basemap-option,
+.app.light-ui .severity-grid button {
+  color: #395f70;
+  background: #f1f6f8;
+  border-color: rgba(45, 105, 129, .16) !important;
+}
+.app.light-ui .theme-selector button:hover,
+.app.light-ui .basemap-option:hover,
+.app.light-ui .severity-grid button:hover { border-color: rgba(8, 127, 166, .48) !important; }
+.app.light-ui .theme-selector button.active,
+.app.light-ui .basemap-option.active {
+  color: #12384a;
+  background: #e1f3f8;
+  border-color: #087fa6 !important;
+}
+.app.light-ui .theme-selector svg,
+.app.light-ui .basemap-option svg { color: #087fa6; }
+.app.light-ui .theme-selector small,
+.app.light-ui .basemap-option small { color: #698491; }
+.app.light-ui .sources-menu-action {
+  color: #087fa6;
+  background: #e8f5f9;
+  border-color: rgba(8, 127, 166, .24) !important;
+}
+.app.light-ui .sources-menu-action:hover,
+.app.light-ui .sources-menu-action.active { background: #dff1f7; border-color: #268faf !important; }
+.app.light-ui .sources-menu-action strong,
+.app.light-ui .layer-toggle-copy strong { color: #17384a; }
+.app.light-ui .sources-menu-action small,
+.app.light-ui .layer-toggle-copy small,
+.app.light-ui .control-help,
+.app.light-ui .control-sync { color: #65808e; }
+.app.light-ui .layer-toggle-row + .layer-toggle-row { border-top-color: rgba(45, 99, 121, .1); }
+.app.light-ui .map-control-panel .switch .slider { background: #bfd0d8; }
+.app.light-ui .map-control-panel .switch input:checked + .slider { background: #087fa6; }
+.app.light-ui .pollutant-select,
+.app.light-ui .facility-toolbar select {
+  color: #17384a;
+  background: #fff;
+  border-color: #adc7d2;
+}
+.app.light-ui .severity-grid button.active { color: #17384a; border-color: rgba(8, 127, 166, .42) !important; }
+.app.light-ui .filter-actions button {
+  color: #086f91;
+  background: #eaf5f8;
+  border-color: rgba(8, 127, 166, .2) !important;
+}
+
+.app.light-ui .monitor-drawer {
+  color: #17384a;
+  background: rgba(249, 252, 253, .985);
+  border-color: rgba(28, 100, 132, .26);
+  box-shadow: 0 18px 52px rgba(22, 49, 63, .3);
+}
+.app.light-ui .drawer-handle { background: #9ebdca; }
+.app.light-ui .monitor-drawer .close-btn { color: #587685; }
+.app.light-ui .monitor-drawer .close-btn:hover { color: #102f40; }
+.app.light-ui .fullscreen-btn {
+  color: #087fa6;
+  background: #e8f5f9;
+  border-color: rgba(8, 127, 166, .24);
+}
+.app.light-ui .fullscreen-btn:hover { color: #045d79; border-color: #087fa6; }
+.app.light-ui .monitor-drawer h1,
+.app.light-ui .monitor-drawer h2 { color: #102f40; }
+.app.light-ui .monitor-drawer .meta,
+.app.light-ui .monitor-drawer .loading,
+.app.light-ui .monitor-drawer .empty { color: #607d8c; }
+.app.light-ui .monitor-drawer .section-title { color: #28758e; border-bottom-color: rgba(28, 100, 132, .16); }
+.app.light-ui .monitor-drawer .param-card,
+.app.light-ui .monitor-drawer .station-item,
+.app.light-ui .company-row {
+  color: #17384a;
+  background: #f2f7f9;
+  border-color: rgba(45, 105, 129, .17);
+}
+.app.light-ui .monitor-drawer .param-card .name,
+.app.light-ui .monitor-drawer .param-card .val,
+.app.light-ui .company-main strong { color: #17384a; }
+.app.light-ui .monitor-drawer .param-card .limit,
+.app.light-ui .company-main small,
+.app.light-ui .facility-method,
+.app.light-ui .facility-attribution { color: #688390; }
+.app.light-ui .monitor-drawer .param-card .bar { background: #dbe8ed; }
+.app.light-ui .monitor-drawer .station-item:hover,
+.app.light-ui .company-row:hover { background: #e4f2f7; border-color: #63a6bd; }
+
+.app.light-ui .knowledge-card {
+  color: #17384a;
+  background: linear-gradient(135deg, #e4f3f8, #f6fafc);
+  border-color: rgba(8, 127, 166, .22);
+}
+.app.light-ui .knowledge-card p,
+.app.light-ui .source-strip,
+.app.light-ui .assessment-note { color: #4d6d7c; }
+.app.light-ui .knowledge-facts > div,
+.app.light-ui .status-component { background: rgba(208, 227, 235, .55); }
+.app.light-ui .knowledge-facts span,
+.app.light-ui .status-component span { color: #5f7c89; }
+.app.light-ui .knowledge-facts strong,
+.app.light-ui .knowledge-facts a,
+.app.light-ui .status-component strong,
+.app.light-ui .incident-row strong { color: #17384a; }
+.app.light-ui .status-component p,
+.app.light-ui .incident-row span,
+.app.light-ui .incident-row small,
+.app.light-ui .incident-method,
+.app.light-ui .no-incidents { color: #647f8c !important; }
+.app.light-ui .source-link,
+.app.light-ui .knowledge-links a,
+.app.light-ui .candidate-links a,
+.app.light-ui .incident-links a,
+.app.light-ui .company-source,
+.app.light-ui .facility-attribution a { color: #00789f; }
+.app.light-ui .wfd-guide { background: #e8f5f9; border-color: rgba(8, 127, 166, .2); }
+.app.light-ui .wfd-guide strong { color: #17384a; }
+.app.light-ui .wfd-guide p { color: #526f7c; }
+.app.light-ui .incident-section,
+.app.light-ui .incident-row { border-color: rgba(45, 99, 121, .14); }
+.app.light-ui .incident-evidence span { color: #176e8b; background: #e5f3f7; border-color: rgba(8, 127, 166, .18); }
+.app.light-ui .company-distance,
+.app.light-ui .facility-progress { color: #087fa6; }
+.app.light-ui .show-companies,
+.app.light-ui .service-state.error button,
+.app.light-ui .service-actions a { color: #08799e; background: #e8f5f9; border-color: rgba(8, 127, 166, .24); }
+
+.app.light-ui .maplibregl-ctrl-group,
+.app.light-ui .maplibregl-ctrl-scale {
+  color: #17384a;
+  background: rgba(250, 253, 255, .94);
+  border-color: rgba(28, 100, 132, .24);
+}
+.app.light-ui .maplibregl-ctrl-group button span { filter: none; }
+.app.light-ui .maplibregl-popup-content,
+.app.light-ui .leaflet-popup-content-wrapper,
+.app.light-ui .leaflet-tooltip,
+.app.light-ui .neon-tooltip {
+  color: #17384a !important;
+  background: rgba(252, 254, 255, .97) !important;
+  border-color: rgba(28, 100, 132, .28) !important;
+  box-shadow: 0 8px 24px rgba(25, 57, 73, .18);
+}
+.app.light-ui .maplibregl-popup-content b { color: #102f40; }
+.app.light-ui .maplibregl-popup-tip { border-top-color: rgba(252, 254, 255, .97) !important; }
+.app.light-ui .leaflet-popup-tip { background: rgba(252, 254, 255, .97); }
+
+@media (max-width: 420px) {
+  .theme-selector { grid-template-columns: 1fr; }
+}
