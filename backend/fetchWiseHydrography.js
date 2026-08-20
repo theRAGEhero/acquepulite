@@ -73,7 +73,7 @@ async function main() {
     source_url: SERVICE,
     downloaded_at: collection.metadata.downloaded_at,
     sha256: checksum,
-    code_fields: ["thematicIdIdentifier", "euSurfaceWaterBodyCode", "waterBodyIdentifier"],
+    code_fields: ["thematicIdIdentifier", "inspireIdLocalId", "euSurfaceWaterBodyCode", "waterBodyIdentifier"],
     name_fields: ["nameText", "nameTextInternational", "waterBodyName"],
     feature_id_fields: ["inspireIdLocalId", "thematicIdIdentifier", "OBJECTID"]
   };

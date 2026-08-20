@@ -19,6 +19,7 @@ import { log } from "./logger.js";
 
 const DATA_DIR = path.join(import.meta.dirname, "data", "eea");
 const CACHE_FILE = path.join(import.meta.dirname, "data", "eea", "_parsed.json");
+const SITES_JSON = path.join(import.meta.dirname, "data", "eea", "ied_sites_it.json");
 
 // Map EEA pollutant codes to our ARPA parameter codes (cross-reference)
 export const POLLUTANT_MAP = {
@@ -105,6 +106,52 @@ export async function loadEeaData() {
       return cached;
     } catch (e) {
       log.warn("EEA-IMPORT", `Cache read failed: ${e.message}`);
+    }
+  }
+
+  // --- Fast path: ied_sites_it.json downloaded from ArcGIS MapServer ---
+  if (fs.existsSync(SITES_JSON)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(SITES_JSON, "utf8"));
+      const sites = raw.map(s => ({
+        id: s.id,
+        name: s.name || s.id,
+        lat: s.lat,
+        lon: s.lon,
+        country: s.country || "IT",
+        sector: s.sector || "",
+        subsector: s.activity || "",
+        city: s.city || "",
+        address: "",
+        river_basin_districts: s.river_basin_districts || null,
+        pollutants: s.pollutants || null,
+        water_groups: s.water_groups || null,
+        air_groups: s.air_groups || null,
+        facility_names: s.facility_names || null,
+        reporting_year: s.reporting_year || null,
+        has_release_data: s.has_release_data,
+        has_waste_data: s.has_waste_data,
+        has_transfer_data: s.has_transfer_data,
+        n_facilities: s.n_facilities,
+        n_installations: s.n_installations,
+        n_lcp: s.n_lcp,
+        has_seveso: s.has_seveso,
+        annex1: s.annex1 || null
+      }));
+      const result = {
+        sites,
+        facilities: [],
+        pollutant: [],
+        transfers: [],
+        installations: [],
+        lcp: [],
+        source: "EEA IED ArcGIS MapServer"
+      };
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(result));
+      log.info("EEA-IMPORT", `Loaded ${sites.length} Italian IED sites from ArcGIS download`);
+      return result;
+    } catch (e) {
+      log.warn("EEA-IMPORT", `Sites JSON read failed: ${e.message}`);
     }
   }
 

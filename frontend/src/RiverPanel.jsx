@@ -22,7 +22,9 @@ function scoreColor(score) {
   return `rgb(185,28,28)`;
 }
 
-export default function RiverPanel({ river, onStationClick }) {
+export default function RiverPanel({
+  river, onStationClick, facilities, facilitiesLoading, facilitiesError
+}) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [facilitiesStation, setFacilitiesStation] = useState(null);
@@ -55,15 +57,7 @@ export default function RiverPanel({ river, onStationClick }) {
 
   const isArpa = summary?.source === "ARPA Lombardia";
   const isArpae = summary?.source === "ARPAE Emilia-Romagna";
-  const isArpat = summary?.source === "ARPAT Toscana (D.M. 260/2010 — WFD)";
-
-  const statusBadge = (status) => {
-    const map = {
-      "Elevato": "high", "Buono": "good", "Sufficiente": "moderate",
-      "Scarso": "poor", "Cattivo": "bad", "Non buono": "bad"
-    };
-    return map[status] || null;
-  };
+  const isStatusAssessment = summary?.assessment_type === "water_body_status";
 
   return (
     <>
@@ -76,12 +70,12 @@ export default function RiverPanel({ river, onStationClick }) {
             WFD: {WFD_LABEL[river.wfd_status]}
           </span>
         )}
-        {(isArpa || isArpae || isArpat) && <span className="badge real" style={{ marginLeft: 4 }}>ARPA real data</span>}
+        {(isArpa || isArpae || isStatusAssessment) && <span className="badge real" style={{ marginLeft: 4 }}>Official agency data</span>}
       </div>
 
       {river.geometry_source && (
         <div className="meta" style={{ marginTop: 6 }}>
-          River line: <b>{river.geometry_source}</b>
+          River line: <a className="source-link" href={geometrySourceUrl(river)} target="_blank" rel="noreferrer">{river.geometry_source} ↗</a>
           {river.source_dataset_version && <> · {river.source_dataset_version}</>}
           {river.geometry_quality && <> · {river.geometry_quality}</>}
         </div>
@@ -89,9 +83,12 @@ export default function RiverPanel({ river, onStationClick }) {
 
       <KnowledgeCard data={knowledge} loading={knowledgeLoading} />
 
+      <RiverCompanies data={facilities} loading={facilitiesLoading} error={facilitiesError}
+        onCompanyClick={onStationClick} />
+
       {loading && <div className="loading">Loading pollution data…</div>}
 
-      {!loading && summary && !isArpa && !isArpae && !isArpat && (
+      {!loading && summary && !isArpa && !isArpae && !isStatusAssessment && (
         <div className="empty" style={{ marginTop: 30 }}>
           <p style={{ fontSize: 15, marginBottom: 6 }}>No real ARPA data available</p>
           <p style={{ fontSize: 13 }}>This river has no monitoring stations with real measurements yet.</p>
@@ -102,12 +99,15 @@ export default function RiverPanel({ river, onStationClick }) {
         <>
           <div className="meta" style={{ marginBottom: 8 }}>
             <small>
-              Source: <b>{summary.source}</b>
+              Source: <SourceLink href={summary.source_url}>{summary.source}</SourceLink>
+              {summary.source_period && <> · {summary.source_period}</>}
+              {summary.source_license && <> · <SourceLink href={summary.source_license_url}>{summary.source_license}</SourceLink></>}
               {summary.fetched_at && <> · fetched {new Date(summary.fetched_at).toLocaleString()}</>}
             </small>
           </div>
 
-          <div className="section-title">Pollution parameters</div>
+          <div className="section-title">Measured pollution parameters</div>
+          <div className="assessment-note">Values come from the linked agency dataset. Thresholds shown below are dashboard screening references, not a legal compliance ruling.</div>
           {summary.parameters.map(p => {
             const pct = p.legal_limit
               ? Math.min(100, (p.avg / p.legal_limit) * 100)
@@ -125,8 +125,8 @@ export default function RiverPanel({ river, onStationClick }) {
                 <div className="limit">
                   avg of {p.stations?.length || 0} station(s) · max {p.max}
                   {p.legal_limit
-                    ? ` · limit ${p.legal_limit} ${p.unit}`
-                    : " · no legal limit"}
+                    ? ` · screening reference ${p.legal_limit} ${p.unit}`
+                    : " · no screening reference"}
                 </div>
                 <div className="bar">
                   <div style={{
@@ -164,28 +164,33 @@ export default function RiverPanel({ river, onStationClick }) {
         </>
       )}
 
-      {summary && isArpat && (
+      {summary && isStatusAssessment && (
         <>
-          <div className="meta" style={{ marginBottom: 8 }}>
-            <small>
-              Source: <b>ARPAT Toscana</b> — stato ecologico/chimico per corpo idrico
-              (WFD · D.M. 260/2010) · triennio 2022-2024
-            </small>
+          <div className="source-strip">
+            Source: <SourceLink href={summary.source_url}>{summary.source}</SourceLink>
+            {summary.source_period && <> · {summary.source_period}</>}
+            {summary.source_license && <> · <SourceLink href={summary.source_license_url}>{summary.source_license}</SourceLink></>}
           </div>
+          <WfdGuide method={summary.assessment_method} />
 
           <div className="section-title">Water bodies ({summary.stretches?.length || 0})</div>
           {summary.stretches?.map(s => {
-            const badge = statusBadge(s.status);
+            const ecological = statusInfo(s.ecological);
+            const chemical = chemicalInfo(s.chemical);
+            const indicator = statusInfo(s.status);
             return (
-              <div key={s.name} className="param-card">
+              <div key={`${s.water_body_code || "body"}-${s.name}`} className="param-card water-body-card">
                 <div className="top">
                   <div className="name">{s.name}</div>
-                  {badge && <span className={`badge ${badge}`}>{s.status}</span>}
+                  <span className={`objective-chip ${s.meets_wfd_objective ? "met" : "failed"}`}>
+                    {s.meets_wfd_objective ? "WFD objective met" : "WFD objective not met"}
+                  </span>
                 </div>
-                <div className="limit">
-                  {s.comune && <>{s.comune} · </>}
-                  {s.ecological && <>Ecol: {s.ecological} · </>}
-                  {s.chemical && <>Chem: {s.chemical}</>}
+                {s.comune && <div className="water-body-location">{s.comune}</div>}
+                <div className="status-components">
+                  {s.ecological && <StatusComponent label="Ecological status" raw={s.ecological} info={ecological} />}
+                  {s.chemical && <StatusComponent label="Chemical status" raw={s.chemical} info={chemical} />}
+                  {s.indicator && <StatusComponent label={`${s.indicator}${s.indicator_year ? ` ${s.indicator_year}` : ""}`} raw={s.status} info={indicator} />}
                 </div>
                 <div className="bar">
                   <div style={{
@@ -193,12 +198,129 @@ export default function RiverPanel({ river, onStationClick }) {
                     background: scoreColor(s.score)
                   }}></div>
                 </div>
+                {s.source_url && <div className="record-source"><SourceLink href={s.source_url}>Source record/dataset ↗</SourceLink></div>}
               </div>
             );
           })}
         </>
       )}
     </>
+  );
+}
+
+const ECOLOGICAL_STATUS = {
+  Elevato: { tone: "high", verdict: "Very good", explanation: "Best class; ecosystem is close to undisturbed conditions." },
+  Buono: { tone: "good", verdict: "Good", explanation: "The WFD ecological objective is met." },
+  Sufficiente: { tone: "moderate", verdict: "Below target", explanation: "Moderate ecological quality. It is not ‘good’; improvement is required." },
+  Scarso: { tone: "poor", verdict: "Poor", explanation: "Clearly degraded ecological quality; the WFD objective is not met." },
+  Cattivo: { tone: "bad", verdict: "Bad", explanation: "Worst class; the ecosystem is seriously degraded." }
+};
+
+function statusInfo(status) {
+  return ECOLOGICAL_STATUS[status] || { tone: "nodata", verdict: "Not classified", explanation: "No interpretable classification was supplied." };
+}
+
+function chemicalInfo(status) {
+  if (/^buono$/i.test(status || "")) return { tone: "good", verdict: "Pass", explanation: "Priority-substance environmental standards are achieved." };
+  if (/^non\s*buono$/i.test(status || "")) return { tone: "bad", verdict: "Fail", explanation: "At least one priority-substance standard is not achieved." };
+  return { tone: "nodata", verdict: "Not classified", explanation: "No chemical-status classification was supplied." };
+}
+
+function StatusComponent({ label, raw, info }) {
+  return (
+    <div className={`status-component ${info.tone}`}>
+      <div><span>{label}</span><strong>{raw} · {info.verdict}</strong></div>
+      <p>{info.explanation}</p>
+    </div>
+  );
+}
+
+function WfdGuide({ method }) {
+  const limecoOnly = /LIMeco/i.test(method || "");
+  return (
+    <div className="wfd-guide">
+      <strong>How to read these classes</strong>
+      {limecoOnly ? (
+        <p>LIMeco measures nutrients and dissolved oxygen. Elevato/Buono are favorable; Sufficiente, Scarso and Cattivo indicate progressively worse conditions. LIMeco alone is not the complete WFD ecological classification.</p>
+      ) : (
+        <p>Ecological status has five classes: Elevato and Buono are favorable. Sufficiente is moderate and already below the WFD objective; Scarso is poor; Cattivo is the worst. Chemical status is only Buono (pass) or Non buono (fail). The overall objective fails when either component fails.</p>
+      )}
+      <a href={limecoOnly
+        ? "https://www.arpa.veneto.it/dati-ambientali/open-data/idrosfera/corsi-dacqua/limeco-livello-di-inquinamento-espresso-dai-macrodescrittori-per-lo-stato-ecologico-dei-corsi-dacqua"
+        : "https://www.arpa.piemonte.it/temi/acqua/qualita-delle-acque"}
+        target="_blank" rel="noreferrer">Official class explanation ↗</a>
+    </div>
+  );
+}
+
+function SourceLink({ href, children }) {
+  return href
+    ? <a className="source-link" href={href} target="_blank" rel="noreferrer">{children}</a>
+    : <b>{children}</b>;
+}
+
+function geometrySourceUrl(river) {
+  if (/OpenStreetMap/i.test(river.geometry_source || "")) return "https://www.openstreetmap.org/copyright";
+  if (/WISE|WFD 2022/i.test(river.geometry_source || "")) return "https://water.discomap.eea.europa.eu/arcgis/rest/services/WISE_WFD/WFD2022_SurfaceWaterBody_WM/MapServer/16";
+  return river.source_url || "https://water.europa.eu/freshwater";
+}
+
+function RiverCompanies({ data, loading, error, onCompanyClick }) {
+  const [showAll, setShowAll] = useState(false);
+  const [category, setCategory] = useState("all");
+  useEffect(() => { setShowAll(false); setCategory("all"); }, [data?.river?.id]);
+  const categories = [...new Set((data?.facilities || []).map(item => item.category))];
+  const filtered = (data?.facilities || []).filter(item => category === "all" || item.category === category);
+  const visible = showAll ? filtered : filtered.slice(0, 16);
+
+  return (
+    <section className="river-companies">
+      <div className="section-title">
+        <span>Companies / potential sources near river</span>
+        {data && <span>{data.count} within {(data.radius_m / 1000).toFixed(0)} km</span>}
+      </div>
+      <div className="facility-method">
+        Corridor distance is calculated against the actual river line. Click a company to locate it on the map.
+      </div>
+      {loading && <div className="loading">Scanning OpenStreetMap and the installed EEA registry…</div>}
+      {error && <div className="facility-warning">Facility scan failed: {error}</div>}
+      {data?.warning && <div className="facility-warning">{data.warning}</div>}
+      {data && data.count === 0 && <div className="loading">No mapped companies found in this corridor.</div>}
+      {data && data.count > 0 && (
+        <>
+          <div className="facility-toolbar">
+            <span>OSM {data.osm_count} · EEA {data.eea_count}</span>
+            <select value={category} onChange={event => { setCategory(event.target.value); setShowAll(false); }}>
+              <option value="all">All categories</option>
+              {categories.map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+            </select>
+          </div>
+          <div className="company-grid">
+            {visible.map(company => (
+              <div key={company.id} className="company-row">
+                <button className="company-locate" onClick={() => onCompanyClick(company.lat, company.lon)}>
+                  <span className={`company-symbol ${company.category}`} />
+                  <span className="company-main">
+                    <strong>{company.name}</strong>
+                    <small>{company.category_label} · {company.source}</small>
+                  </span>
+                  <span className="company-distance">{company.distance_to_river_m < 1000
+                    ? `${company.distance_to_river_m} m`
+                    : `${(company.distance_to_river_m / 1000).toFixed(1)} km`}</span>
+                </button>
+                {(company.osm_url || company.external_url) && <a className="company-source" href={company.osm_url || company.external_url} target="_blank" rel="noreferrer" title="Open source record">↗</a>}
+              </div>
+            ))}
+          </div>
+          {filtered.length > 16 && (
+            <button className="show-companies" onClick={() => setShowAll(value => !value)}>
+              {showAll ? "Show first 16" : `Show all ${filtered.length}`}
+            </button>
+          )}
+          <div className="facility-attribution">OpenStreetMap coverage depends on contributed tags. EEA entries appear when the bulk Industrial Emissions dataset is installed.</div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -247,6 +369,25 @@ function KnowledgeCard({ data, loading }) {
         <div className="knowledge-links">
           {data.wikipedia && <a href={data.wikipedia.url} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
           <a href={data.match.wikidata_url} target="_blank" rel="noreferrer">Wikidata ↗</a>
+        </div>
+        <div className="incident-section">
+          <div className="knowledge-kicker">Environmental incidents linked through Wikidata</div>
+          {data.environmental_incidents?.length ? data.environmental_incidents.map(incident => (
+            <article className="incident-row" key={incident.id}>
+              <div>
+                <strong>{incident.label}</strong>
+                <span>{incident.date || "Date not structured"} · {incident.confidence} confidence</span>
+                <p>{incident.description || incident.relation}</p>
+                <small>{incident.relation}</small>
+              </div>
+              <div className="incident-links">
+                {incident.wikipedia && <a href={incident.wikipedia.url} target="_blank" rel="noreferrer">Wikipedia ↗</a>}
+                <a href={incident.wikidata_url} target="_blank" rel="noreferrer">Wikidata ↗</a>
+              </div>
+            </article>
+          )) : (
+            <p className="no-incidents">No sufficiently reliable environmental incident is directly structured for this river in Wikidata. This means “not found in Wikidata,” not “no incident occurred.”</p>
+          )}
         </div>
       </div>
     </section>

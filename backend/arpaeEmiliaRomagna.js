@@ -162,6 +162,11 @@ export async function loadArpaeEmiliaRomagna() {
       name,
       region: "Emilia-Romagna (ARPAE)",
       source: "ARPAE Emilia-Romagna",
+      source_url: "https://dati.arpae.it/dataset/rete-regionale-per-la-qualita-ambientale-acque-superficiali-fluviali-dati-2010-2025",
+      source_license: "CC BY 4.0",
+      source_license_url: "https://creativecommons.org/licenses/by/4.0/",
+      source_period: "Measurements 2010–2025",
+      assessment_type: "Measured parameters compared with configured environmental thresholds",
       wfd_status: null,
       geom: null, // geometry comes from OSM in server boot
       stretches: null

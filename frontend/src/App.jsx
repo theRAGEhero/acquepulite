@@ -19,7 +19,11 @@ export default function App() {
   const [dataSources, setDataSources] = useState(null);
   const [selected, setSelected] = useState(null);
   const [drawer, setDrawer] = useState(null);
+  const [drawerFullscreen, setDrawerFullscreen] = useState(false);
   const [flyTo, setFlyTo] = useState(null);
+  const [riverFacilities, setRiverFacilities] = useState(null);
+  const [riverFacilitiesLoading, setRiverFacilitiesLoading] = useState(false);
+  const [riverFacilitiesError, setRiverFacilitiesError] = useState(null);
   const [view3D, setView3D] = usePersistentState("view3d", false);
   const [layers, setLayers] = usePersistentState("layers", {
     stations: true, network: true, segments: true, labels: true,
@@ -73,6 +77,25 @@ export default function App() {
       .catch(() => setEeaSites({ type: "FeatureCollection", features: [], available: false }));
   }, [layers.eeaSites]);
 
+  useEffect(() => {
+    if (!selected?.id) return;
+    const controller = new AbortController();
+    setRiverFacilities(null);
+    setRiverFacilitiesError(null);
+    setRiverFacilitiesLoading(true);
+    fetch(`/api/rivers/${selected.id}/nearby-facilities?radius=3000`, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`Facility service returned ${response.status}`);
+        return response.json();
+      })
+      .then(data => { setRiverFacilities(data); setRiverFacilitiesLoading(false); })
+      .catch(error => {
+        if (error.name === "AbortError") return;
+        setRiverFacilitiesError(error.message); setRiverFacilitiesLoading(false);
+      });
+    return () => controller.abort();
+  }, [selected?.id]);
+
   const handleRiverClick = useCallback(props => {
     setSelected({
       id: props.id, name: props.name, region: props.region,
@@ -80,10 +103,15 @@ export default function App() {
       geometry_source: props.geometry_source,
       source_dataset_version: props.source_dataset_version,
       source_feature_id: props.source_feature_id,
-      geometry_quality: props.geometry_quality
+      geometry_quality: props.geometry_quality,
+      source_url: props.source_url, source_license: props.source_license,
+      source_license_url: props.source_license_url, source_period: props.source_period,
+      assessment_type: props.assessment_type
     });
     setDrawer("river");
-  }, []);
+    setDrawerFullscreen(false);
+    setLayers(previous => ({ ...previous, facilities: true }));
+  }, [setLayers]);
 
   const metrics = useMemo(() => {
     const riverFeatures = rivers?.features || [];
@@ -98,7 +126,10 @@ export default function App() {
     };
   }, [rivers, segments, stations]);
 
-  const closeDrawer = useCallback(() => setDrawer(null), []);
+  const closeDrawer = useCallback(() => {
+    setDrawer(null); setSelected(null); setRiverFacilities(null);
+    setDrawerFullscreen(false);
+  }, []);
   const toggleLayer = useCallback((key, value) => setLayers(previous => ({ ...previous, [key]: value })), [setLayers]);
   const toggleLevel = useCallback((key, value) => setLevelsShown(previous => ({ ...previous, [key]: value })), [setLevelsShown]);
   const handleStationClick = useCallback((lat, lon) => setFlyTo([lat, lon, Date.now()]), []);
@@ -108,7 +139,8 @@ export default function App() {
     eeaSites: layers.eeaSites ? eeaSites : null,
     showSegments: layers.segments, showNetwork: layers.network !== false,
     showLabels: layers.labels, basemap, onRiverClick: handleRiverClick,
-    onStationClick: handleStationClick, flyTo
+    onStationClick: handleStationClick, flyTo,
+    riverFacilities: layers.facilities ? riverFacilities?.geojson : null
   };
 
   return (
@@ -154,12 +186,18 @@ export default function App() {
         </div>
 
         {drawer && (
-          <section className={`monitor-drawer ${drawer}`} aria-live="polite">
+          <section className={`monitor-drawer ${drawer} ${drawerFullscreen ? "fullscreen" : ""}`} aria-live="polite">
             <div className="drawer-handle" />
+            <button className="fullscreen-btn" onClick={() => setDrawerFullscreen(value => !value)}
+              aria-label={drawerFullscreen ? "Exit full screen panel" : "Expand panel to full screen"}>
+              {drawerFullscreen ? "↙ Exit full screen" : "↗ Full screen"}
+            </button>
             <button className="close-btn" onClick={closeDrawer} aria-label="Close panel">×</button>
             <div className="drawer-scroll">
               {drawer === "river" && selected
-                ? <RiverPanel river={selected} onStationClick={handleStationClick} />
+                ? <RiverPanel river={selected} onStationClick={handleStationClick}
+                    facilities={riverFacilities} facilitiesLoading={riverFacilitiesLoading}
+                    facilitiesError={riverFacilitiesError} />
                 : <DataSourcesPanel />}
             </div>
           </section>

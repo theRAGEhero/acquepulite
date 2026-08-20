@@ -12,6 +12,7 @@
       "sha256": "f58f982f84e6ef50f0e2f4049d94d764f07ea406fc52a696140031e7b407c6de",
       "code_fields": [
         "thematicIdIdentifier",
+        "inspireIdLocalId",
         "euSurfaceWaterBodyCode",
         "waterBodyIdentifier"
       ],

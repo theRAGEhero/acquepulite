@@ -65,6 +65,20 @@ const CATEGORY_LABELS = {
   business: "Business / Office"
 };
 
+const CORRIDOR_FILTERS = [
+  '["industrial"]',
+  '["company"]',
+  '["landuse"~"industrial|farmland|greenhouse_horticulture|quarry|landfill|railway|port"]',
+  '["man_made"~"wastewater_plant|pumping_station|storage_tank|mine|tailings|pipeline"]',
+  '["building"~"industrial|farm_auxiliary"]',
+  '["craft"~"chemical|plating|brewery|sawmill|winery|pottery"]',
+  '["shop"~"wholesale|trade|hardware|agrarian|chemical|paint"]["name"]',
+  '["amenity"~"fuel|animal_boarding|loading_dock"]',
+  '["facility"~"wastewater|water_works"]',
+  '["farm"]',
+  '["resource"]'
+];
+
 function buildQuery(lat, lon, radius) {
   const filters = Object.entries(CATEGORY_QUERIES)
     .map(([cat, tags]) => tags.map(t => `node${t}(around:${radius},${lat},${lon}); way${t}(around:${radius},${lat},${lon});`).join(""))
@@ -72,24 +86,54 @@ function buildQuery(lat, lon, radius) {
   return `[out:json][timeout:25];(${filters});out tags center 100;`;
 }
 
+function geometryLines(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === "LineString") return [geometry.coordinates];
+  if (geometry.type === "MultiLineString") return geometry.coordinates;
+  return [];
+}
+
+function downsampleLine(line, maximumPoints) {
+  if (line.length <= maximumPoints) return line;
+  const sampled = [];
+  const step = (line.length - 1) / (maximumPoints - 1);
+  for (let i = 0; i < maximumPoints; i++) sampled.push(line[Math.round(i * step)]);
+  return sampled;
+}
+
+function buildCorridorQuery(geometry, radius) {
+  const lines = geometryLines(geometry).filter(line => line.length > 0);
+  const totalVertices = lines.reduce((sum, line) => sum + line.length, 0) || 1;
+  const corridors = lines.map(line => {
+    const allowance = Math.max(2, Math.round(40 * line.length / totalVertices));
+    const coordinates = downsampleLine(line, allowance)
+      .map(([lon, lat]) => `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`).join(",");
+    return `(around:${radius},${coordinates})`;
+  });
+  const filters = corridors.flatMap(corridor => CORRIDOR_FILTERS.map(tags => `nwr${tags}${corridor};`)).join("");
+  return `[out:json][timeout:30];(${filters});out tags center 3000;`;
+}
+
 async function tryOverpass(query) {
-  for (const url of OVERPASS_ENDPOINTS) {
-    try {
+  const attempts = OVERPASS_ENDPOINTS.map(async url => {
       log.debug("OVERPASS", `Trying ${url}`);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(query)
+        body: "data=" + encodeURIComponent(query),
+        signal: AbortSignal.timeout(35000)
       });
-      if (!res.ok) { log.warn("OVERPASS", `${url} returned ${res.status}`); continue; }
+      if (!res.ok) throw new Error(`${url} returned ${res.status}`);
       const data = await res.json();
       log.debug("OVERPASS", `Got ${data.elements?.length || 0} elements from ${url}`);
       return data;
-    } catch (e) {
-      log.warn("OVERPASS", `${url} failed: ${e.message}`);
-    }
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch (error) {
+    for (const failure of error.errors || []) log.warn("OVERPASS", failure.message);
+    throw new Error("All Overpass endpoints failed");
   }
-  throw new Error("All Overpass endpoints failed");
 }
 
 function distanceMeters(lat1, lon1, lat2, lon2) {
@@ -100,6 +144,33 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon/2) ** 2;
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function pointSegmentDistanceMeters(lat, lon, a, b) {
+  const referenceLat = (lat + a[1] + b[1]) / 3 * Math.PI / 180;
+  const metresPerLon = 111320 * Math.cos(referenceLat);
+  const px = lon * metresPerLon;
+  const py = lat * 110540;
+  const ax = a[0] * metresPerLon;
+  const ay = a[1] * 110540;
+  const bx = b[0] * metresPerLon;
+  const by = b[1] * 110540;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+export function distanceToRiverMeters(lat, lon, geometry) {
+  let nearest = Infinity;
+  for (const line of geometryLines(geometry)) {
+    if (line.length === 1) nearest = Math.min(nearest, distanceMeters(lat, lon, line[0][1], line[0][0]));
+    for (let index = 1; index < line.length; index++) {
+      nearest = Math.min(nearest, pointSegmentDistanceMeters(lat, lon, line[index - 1], line[index]));
+    }
+  }
+  return Math.round(nearest);
 }
 
 function categorize(tags) {
@@ -158,6 +229,35 @@ export async function queryNearbyFacilities(lat, lon, radius = 3000) {
   }
   facilities.sort((a, b) => a.distance_m - b.distance_m);
   log.debug("OVERPASS", `Deduplicated: ${facilities.length} facilities`);
+  return facilities;
+}
+
+export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
+  const query = buildCorridorQuery(geometry, radius);
+  log.info("OVERPASS", `Querying facilities within ${radius}m of river geometry`);
+  const data = await tryOverpass(query);
+  const seen = new Set();
+  const facilities = [];
+  for (const el of data.elements || []) {
+    const lat = el.lat ?? el.center?.lat;
+    const lon = el.lon ?? el.center?.lon;
+    if (lat == null || lon == null) continue;
+    const id = `${el.type}/${el.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const distance = distanceToRiverMeters(lat, lon, geometry);
+    if (distance > radius) continue;
+    const tags = el.tags || {};
+    const category = categorize(tags);
+    facilities.push({
+      id, name: deriveName(tags), category,
+      category_label: CATEGORY_LABELS[category] || category,
+      lat, lon, distance_to_river_m: distance,
+      source: "OpenStreetMap", osm_url: `https://www.openstreetmap.org/${id}`,
+      osm_tags: tags
+    });
+  }
+  facilities.sort((a, b) => a.distance_to_river_m - b.distance_to_river_m);
   return facilities;
 }
 

@@ -197,6 +197,11 @@ async function loadBasin(basin) {
     length_km: null,
     wfd_status: BASIN_WFD[basin] || "moderate",
     source: "ARPA Lombardia",
+    source_url: `https://www.dati.lombardia.it/d/${SOC_DATASET_ID}`,
+    source_license: "CC0 1.0",
+    source_license_url: "https://creativecommons.org/publicdomain/zero/1.0/",
+    source_period: "Latest available agency measurements",
+    assessment_type: "Measured parameters compared with configured environmental thresholds",
     geom: {
       type: "LineString",
       coordinates: BASIN_GEOMETRIES[basin] || coords

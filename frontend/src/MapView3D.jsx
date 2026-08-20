@@ -74,14 +74,14 @@ function applyNeonBaseStyle(map) {
 }
 
 export default function MapView3D({
-  rivers, segments, stations, eeaSites, showSegments, showNetwork = true, showLabels, showTerrain, basemap,
+  rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork = true, showLabels, showTerrain, basemap,
   onRiverClick, onStationClick, flyTo, flat = false
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const refs = useRef({ handlers: [] });
   refs.current = {
-    ...refs.current, rivers, segments, stations, eeaSites, showSegments, showNetwork, showLabels,
+    ...refs.current, rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels,
     showTerrain, basemap, onRiverClick, onStationClick, flat
   };
 
@@ -116,7 +116,7 @@ export default function MapView3D({
     const map = mapRef.current;
     if (map?.isStyleLoaded()) addLayers(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments, rivers, stations, eeaSites, showSegments, showNetwork, showLabels]);
+  }, [segments, rivers, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -172,9 +172,10 @@ export default function MapView3D({
     for (const id of [
       "segments", "segments-glow", "rivers-2d", "rivers-glow", "rivers-casing",
       "stations", "stations-glow", "river-labels", "eea-sites", "eea-sites-glow",
+      "river-facilities", "river-facilities-glow",
       "hydro-network", "hydro-network-glow", "rivers-context"
     ]) if (map.getLayer(id)) map.removeLayer(id);
-    for (const id of ["segments-src", "rivers-src", "stations-src", "labels-src", "eea-src"])
+    for (const id of ["segments-src", "rivers-src", "stations-src", "labels-src", "eea-src", "river-facilities-src"])
       if (map.getSource(id)) map.removeSource(id);
 
     const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -230,6 +231,7 @@ export default function MapView3D({
     if (data.showLabels && data.rivers) addRiverLabels(map, data.rivers, clone, neon);
     if (data.stations?.features?.length) addStations(map, data, clone, neon);
     if (data.eeaSites?.features?.length) addEeaSites(map, data.eeaSites, clone, neon);
+    if (data.riverFacilities?.features?.length) addRiverFacilities(map, data.riverFacilities, clone, neon);
   }
 
   function addHydroNetwork(map, neon) {
@@ -288,9 +290,12 @@ export default function MapView3D({
     addEvent(map, "click", "segments", (e) => {
       const p = e.features[0].properties;
       data.onRiverClick({
-        id: p.river_id, name: p.river_name, region: "", length_km: null, wfd_status: null,
+        id: p.river_id, name: p.river_name, region: p.region || "", length_km: null, wfd_status: null,
         geometry_source: p.geometry_source, source_dataset_version: p.source_dataset_version,
-        source_feature_id: p.source_feature_id, geometry_quality: p.geometry_quality
+        source_feature_id: p.source_feature_id, geometry_quality: p.geometry_quality,
+        source_url: p.source_url, source_license: p.source_license,
+        source_license_url: p.source_license_url, source_period: p.source_period,
+        assessment_type: p.assessment_type
       });
     });
   }
@@ -382,5 +387,53 @@ export default function MapView3D({
     addEvent(map, "mouseleave", "eea-sites", () => { map.getCanvas().style.cursor = ""; });
   }
 
+  function addRiverFacilities(map, facilitiesData, clone, neon) {
+    map.addSource("river-facilities-src", { type: "geojson", data: clone(facilitiesData) });
+    if (neon) {
+      map.addLayer({
+        id: "river-facilities-glow", type: "circle", source: "river-facilities-src", minzoom: 5,
+        paint: { "circle-radius": 13, "circle-color": "#ff8c1a", "circle-opacity": 0.2, "circle-blur": 0.8 }
+      });
+    }
+    const categoryColor = [
+      "match", ["get", "category"],
+      "industrial", "#ff3b30", "farm", "#ffd43b", "water_treatment", "#20c9ff",
+      "mining_landfill", "#ff8c1a", "transport_fuel", "#ff6b35", "business", "#c084fc", "#f8fafc"
+    ];
+    map.addLayer({
+      id: "river-facilities", type: "circle", source: "river-facilities-src", minzoom: 5,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 3.5, 9, 6.5, 13, 9],
+        "circle-color": categoryColor, "circle-stroke-color": "#02040a",
+        "circle-stroke-width": 1.5, "circle-opacity": 0.95
+      }
+    });
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 13 });
+    const showPopup = e => {
+      const properties = e.features[0].properties;
+      const distance = Number(properties.distance_to_river_m);
+      const distanceLabel = distance < 1000 ? `${distance} m` : `${(distance / 1000).toFixed(1)} km`;
+      popup.setLngLat(e.features[0].geometry.coordinates).setHTML(
+        `<b>${escapeHtml(properties.name)}</b><br/>${escapeHtml(properties.category_label || "Company")}` +
+        `<br/>${escapeHtml(properties.source)} · ${distanceLabel} from river` +
+        (properties.operator ? `<br/>Operator: ${escapeHtml(properties.operator)}` : "") +
+        (properties.pollutants ? `<br/>Pollutants: ${escapeHtml(properties.pollutants)}` : "")
+      ).addTo(map);
+    };
+    addEvent(map, "mouseenter", "river-facilities", e => {
+      map.getCanvas().style.cursor = "pointer"; showPopup(e);
+    });
+    addEvent(map, "mouseleave", "river-facilities", () => { map.getCanvas().style.cursor = ""; });
+    addEvent(map, "click", "river-facilities", e => {
+      e.originalEvent?.stopPropagation(); showPopup(e);
+    });
+  }
+
   return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  })[character]);
 }

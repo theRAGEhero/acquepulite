@@ -14,6 +14,8 @@ export const ARPA_REGIONS = [
     portal: "https://www.dati.lombardia.it",
     api_type: "Socrata",
     water_quality_dataset: "ixjj-e763",
+    dataset_url: "https://www.dati.lombardia.it/d/ixjj-e763",
+    license: "CC0 1.0", license_url: "https://creativecommons.org/publicdomain/zero/1.0/",
     status: "integrated",
     notes: "Full integration via Socrata API. 18 basins, 304 stations, 14 parameters."
   },
@@ -22,16 +24,22 @@ export const ARPA_REGIONS = [
     portal: "https://www.dati.piemonte.it",
     api_type: "CKAN",
     water_quality_dataset: "qualita-acque-superficiali",
-    status: "researched",
-    notes: "CKAN portal. Dataset 'acque superficiali' exists but needs adapter."
+    dataset_url: "https://webgis.arpa.piemonte.it/ags/rest/services/acqua/Classificazione_ambientale_CI_PdGPO/MapServer/2",
+    license: "ARPA Piemonte attribution; see service metadata",
+    license_url: "https://webgis.arpa.piemonte.it/ags/rest/services/acqua/Classificazione_ambientale_CI_PdGPO/MapServer",
+    status: "integrated",
+    notes: "Official ArcGIS WFD ecological and chemical classification with native river geometry."
   },
   {
     code: "VEN", name: "Veneto", arpa: "ARPA Veneto",
     portal: "https://www.arpa.veneto.it",
     api_type: "CSV/HTML",
-    water_quality_dataset: "monitoraggio-acque-superficiali",
-    status: "researched",
-    notes: "Data published as downloadable CSV/Excel from ARPA Veneto website."
+    water_quality_dataset: "FIUMI LIMeco 2010-2025",
+    dataset_url: "https://www.arpa.veneto.it/dati-ambientali/open-data/idrosfera/corsi-dacqua/limeco-livello-di-inquinamento-espresso-dai-macrodescrittori-per-lo-stato-ecologico-dei-corsi-dacqua",
+    download_url: "https://www.arpa.veneto.it/dati-ambientali/open-data/file-e-allegati/acque-interne/fiumi_limeco_serie_storica_opendata.csv/@@download/file",
+    license: "CC BY 4.0", license_url: "https://creativecommons.org/licenses/by/4.0/",
+    status: "integrated",
+    notes: "Official LIMeco nutrient/oxygen indicator. This is not the complete WFD ecological status."
   },
   {
     code: "TAA", name: "Trentino-Alto Adige", arpa: "APPA Trento + APPA Bolzano",
@@ -62,6 +70,8 @@ export const ARPA_REGIONS = [
     portal: "https://dati.arpae.it",
     api_type: "CKAN/ArcGIS",
     water_quality_dataset: "rete-regionale-per-la-qualita-ambientale-acque-superficiali-fluviali-dati-2010-2025",
+    dataset_url: "https://dati.arpae.it/dataset/rete-regionale-per-la-qualita-ambientale-acque-superficiali-fluviali-dati-2010-2025",
+    license: "CC BY 4.0", license_url: "https://creativecommons.org/licenses/by/4.0/",
     status: "integrated",
     notes: "Integrated via dati.arpae.it (Google Sheets CSV): 102 rivers (Asta), 174 stations, 14 params, measurements 2010-2025."
   },
@@ -70,6 +80,8 @@ export const ARPA_REGIONS = [
     portal: "https://dati.toscana.it",
     api_type: "CKAN",
     water_quality_dataset: "bacino-arno-stato-ecologico-e-chimico-delle-acque-superficiali",
+    dataset_url: "https://www.arpat.toscana.it/app/uploads/datiemappe/dati/bacino-arno-stato-ecologico-e-chimico-delle-acque-superficiali/bacino-arno-2010-2024.csv",
+    license: "CC BY 4.0", license_url: "https://creativecommons.org/licenses/by/4.0/",
     status: "integrated",
     notes: "Integrated via CKAN CSV: Arno (84 corpi idrici), Serchio (19), Ombrone (48), Albegna, Bruna, Merse, Versilia. Stato ecologico/chimico WFD per corpo idrico."
   },
@@ -193,6 +205,7 @@ export const EEA_IED = {
   // Bulk download link (HTML page, needs manual or headless browser)
   bulk_download_hint: "https://industry.eea.europa.eu/industrial-emissions/dataset",
   license: "EEA standard re-use conditions (CC-BY 4.0)",
+  license_url: "https://www.eea.europa.eu/en/legal-notice",
   notes: "No public REST API. Data is server-rendered in Volto SSR HTML. " +
          "Bulk CSV download requires navigating the SPA (JavaScript-driven). " +
          "For programmatic access, use OSM Overpass for industrial POIs instead, " +

@@ -5,6 +5,7 @@ const cache = new Map();
 const WATER_WORDS = /\b(fiume|torrente|rio|river|stream|watercourse|canale|canal|affluente|tributary)\b/i;
 const ITALY_WORDS = /\b(italia|italy|italian[oa]?|lombardia|toscana|emilia|romagna|veneto|piemonte|liguria|lazio|umbria|marche|abruzzo|molise|campania|puglia|basilicata|calabria|sicilia|sardegna|trentino|alto adige|friuli|valle d.aosta)\b/i;
 const WATER_TYPES = new Set(["Q4022", "Q355304", "Q47521", "Q12284", "Q55659167"]);
+const INCIDENT_WORDS = /\b(disastro|catastrofe|incidente|inquinamento|contaminazione|sversamento|alluvione|disaster|pollution|contamination|spill|flood)\b/i;
 
 const FACT_PROPERTIES = {
   P2043: { label: "Length", kind: "quantity" },
@@ -185,6 +186,67 @@ async function getWikipedia(entity) {
   }
 }
 
+function claimReferencesEntity(entity, targetId) {
+  return Object.values(entity.claims || {}).some(claims => claims.some(claim => {
+    const value = claim?.mainsnak?.datavalue?.value;
+    return value?.id === targetId;
+  }));
+}
+
+function claimDate(entity) {
+  for (const property of ["P585", "P580", "P571"]) {
+    const time = rawClaim(entity, property)?.time;
+    if (time) return time.replace(/^\+/, "").slice(0, 10);
+  }
+  return null;
+}
+
+async function directlyLinkedItemIds(riverId) {
+  const query = `SELECT DISTINCT ?item WHERE {
+    VALUES ?relation { wdt:P276 wdt:P361 wdt:P921 wdt:P793 }
+    ?item ?relation wd:${riverId} .
+    FILTER(?item != wd:${riverId})
+  } LIMIT 50`;
+  const params = new URLSearchParams({ query, format: "json" });
+  const data = await fetchJson(`https://query.wikidata.org/sparql?${params}`);
+  return (data.results?.bindings || []).map(binding => binding.item?.value?.split("/").pop()).filter(Boolean);
+}
+
+async function getEnvironmentalIncidents(river, riverEntity) {
+  let directIds = [];
+  try { directIds = await directlyLinkedItemIds(riverEntity.id); } catch { /* WDQS is optional */ }
+  const searches = await Promise.allSettled([
+    searchIds(`${river.name} inquinamento`, "it"),
+    searchIds(`${river.name} disastro`, "it"),
+    searchIds(`${river.name} pollution`, "en")
+  ]);
+  const searchedIds = searches.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  const ids = [...new Set([...directIds, ...searchedIds])].filter(id => id !== riverEntity.id).slice(0, 50);
+  const entities = await getEntities(ids);
+  const directSet = new Set(directIds);
+  const riverName = normalizeName(river.name);
+  const ranked = Object.values(entities).map(entity => {
+    const label = bestText(entity, "labels") || entity.id;
+    const description = bestText(entity, "descriptions") || "";
+    const text = `${label} ${description}`;
+    const direct = directSet.has(entity.id) || claimReferencesEntity(entity, riverEntity.id);
+    let score = direct ? 60 : 0;
+    if (normalizeName(text).includes(riverName)) score += 35;
+    if (INCIDENT_WORDS.test(text)) score += 35;
+    if (claimEntityIds(entity, "P31").includes("Q3193890")) score += 45;
+    if (entity.sitelinks?.itwiki || entity.sitelinks?.enwiki) score += 5;
+    return { entity, score, direct, label, description };
+  }).filter(item => item.score >= 70).sort((a, b) => b.score - a.score).slice(0, 6);
+
+  return Promise.all(ranked.map(async item => ({
+    id: item.entity.id, label: item.label, description: item.description,
+    date: claimDate(item.entity), confidence: item.score >= 120 ? "high" : "medium",
+    relation: item.direct ? "Direct Wikidata relationship to this river" : "River named in Wikidata label/description",
+    wikidata_url: `https://www.wikidata.org/wiki/${item.entity.id}`,
+    wikipedia: await getWikipedia(item.entity)
+  })));
+}
+
 export async function getRiverKnowledge(river) {
   const cached = cache.get(river.id);
   if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) return cached.value;
@@ -204,9 +266,11 @@ export async function getRiverKnowledge(river) {
   const result = accepted ? {
     available: true, query, match: accepted.view,
     wikipedia: await getWikipedia(accepted.entity), facts: await buildFacts(accepted.entity),
+    environmental_incidents: await getEnvironmentalIncidents(river, accepted.entity),
     candidates: ranked.slice(1, 4).map(item => item.view), fetched_at: new Date().toISOString()
   } : {
     available: false, query, match: null, wikipedia: null, facts: [],
+    environmental_incidents: [],
     candidates: ranked.slice(0, 4).map(item => item.view), fetched_at: new Date().toISOString()
   };
   cache.set(river.id, { savedAt: Date.now(), value: result });

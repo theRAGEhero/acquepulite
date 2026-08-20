@@ -108,7 +108,8 @@ export async function loadArpatToscana() {
         const chemRaw = (row[chemIdx] || "").trim().replace(/\s*\*+.*$/, "").trim();
         const eco = ecoRaw;
         const chem = chemRaw;
-        const score = STATUS_SCORE[eco] ?? CHEMICAL_SCORE[chem] ?? null;
+        const componentScores = [STATUS_SCORE[eco], CHEMICAL_SCORE[chem]].filter(value => value != null);
+        const score = componentScores.length ? Math.max(...componentScores) : null;
         if (score == null) continue;
 
         // Main watercourse = first part of sottobacino (e.g. "Arno-Arno" → "Arno")
@@ -125,7 +126,9 @@ export async function loadArpatToscana() {
           status: eco || chem || "—",
           ecological: eco || null,
           chemical: chem || null,
-          score
+          score,
+          source_url: CSV_URLS[basin],
+          source_license: "CC BY 4.0"
         });
         parsed++;
       }
@@ -139,12 +142,19 @@ export async function loadArpatToscana() {
   for (const [key, v] of rivers) {
     if (v.stretches.length === 0) continue;
     const first = v.stretches[0];
+    const worstScore = Math.max(...v.stretches.map(stretch => stretch.score).filter(Number.isFinite));
     result.push({
       id: "arpat_" + key,
       name: v.name,
       region: "Toscana (ARPAT)",
       source: "ARPAT Toscana",
-      wfd_status: statusToWfd(first.status),
+      source_url: first.source_url,
+      source_license: "CC BY 4.0",
+      source_license_url: "https://creativecommons.org/licenses/by/4.0/",
+      source_period: "2022–2024 triennium",
+      assessment_type: "WFD ecological + chemical status",
+      // A river overview must not hide its worst classified water body.
+      wfd_status: scoreToWfd(worstScore),
       stretches: v.stretches.sort((a, b) => a.name.localeCompare(b.name))
     });
   }
@@ -152,12 +162,13 @@ export async function loadArpatToscana() {
   return result;
 }
 
-function statusToWfd(s) {
-  const map = {
-    "Elevato": "high", "Buono": "good", "Sufficiente": "moderate",
-    "Scarso": "poor", "Cattivo": "bad", "Non buono": "bad"
-  };
-  return map[s] || null;
+function scoreToWfd(score) {
+  if (!Number.isFinite(score)) return null;
+  if (score >= 0.85) return "bad";
+  if (score >= 0.65) return "poor";
+  if (score >= 0.4) return "moderate";
+  if (score >= 0.1) return "good";
+  return "high";
 }
 
 export function arpatRiverScore(river, index) {

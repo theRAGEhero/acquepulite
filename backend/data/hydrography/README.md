@@ -22,7 +22,7 @@ the dataset version and SHA-256 checksum, and atomically updates the manifest.
     "license": "EEA standard re-use policy / CC BY 4.0",
     "priority": 200,
     "file": "wise-wfd-2022-it.geojson",
-    "code_fields": ["euSurfaceWaterBodyCode", "waterBodyIdentifier"],
+    "code_fields": ["thematicIdIdentifier", "inspireIdLocalId", "euSurfaceWaterBodyCode", "waterBodyIdentifier"],
     "name_fields": ["waterBodyName", "nameText"],
     "feature_id_fields": ["inspireId", "euSurfaceWaterBodyCode"]
   }]

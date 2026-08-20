@@ -6,7 +6,11 @@ import { parameters } from "./data.js";
 import { loadArpaLombardia, summarizeStationMeasurements, PARAM_MAP } from "./arpaLombardia.js";
 import { loadArpatToscana } from "./arpatToscana.js";
 import { loadArpaeEmiliaRomagna } from "./arpaeEmiliaRomagna.js";
-import { queryNearbyFacilities, CATEGORY_LABELS } from "./overpass.js";
+import { loadArpaPiemonte } from "./arpaPiemonte.js";
+import { loadArpaVeneto } from "./arpaVeneto.js";
+import {
+  queryNearbyFacilities, queryFacilitiesAlongRiver, distanceToRiverMeters, CATEGORY_LABELS
+} from "./overpass.js";
 import { fetchRiverGeometries } from "./riverGeometry.js";
 import {
   geometryLines,
@@ -26,6 +30,8 @@ app.use(express.json());
 
 const PORT = 4000;
 const PARAM_ITER = Object.values(PARAM_MAP);
+const riverFacilityCache = new Map();
+const RIVER_FACILITY_CACHE_MS = 30 * 60 * 1000;
 
 // --- Request logger middleware ---
 app.use((req, _res, next) => {
@@ -79,7 +85,7 @@ async function initArpa() {
       arpatStretches.set(r.id, r);
       allRivers.push(r);
     }
-    log.info("ARPAT", `Toscana: ${toscaStretches()} water bodies loaded`);
+    log.info("ARPAT", `Toscana: ${toscana.reduce((sum, river) => sum + river.stretches.length, 0)} water bodies loaded`);
   } catch (e) {
     log.error("ARPAT", `Toscana failed: ${e.message}`);
   }
@@ -93,6 +99,30 @@ async function initArpa() {
     log.info("ARPAE", `Emilia-Romagna: ${emr.rivers.length} rivers, ${emr.stations.length} stations`);
   } catch (e) {
     log.error("ARPAE", `Emilia-Romagna failed: ${e.message}`);
+  }
+
+  // --- 4. ARPA Piemonte (official ArcGIS WFD classification) ---
+  try {
+    const piemonte = await loadArpaPiemonte();
+    for (const river of piemonte) {
+      arpatStretches.set(river.id, river);
+      allRivers.push(river);
+    }
+    log.info("ARPA-PIEMONTE", `Piemonte: ${piemonte.length} rivers`);
+  } catch (e) {
+    log.error("ARPA-PIEMONTE", `Piemonte failed: ${e.message}`);
+  }
+
+  // --- 5. ARPA Veneto (official LIMeco open-data CSV) ---
+  try {
+    const veneto = await loadArpaVeneto();
+    for (const river of veneto) {
+      arpatStretches.set(river.id, river);
+      allRivers.push(river);
+    }
+    log.info("ARPA-VENETO", `Veneto: ${veneto.length} rivers`);
+  } catch (e) {
+    log.error("ARPA-VENETO", `Veneto failed: ${e.message}`);
   }
 
   store = {
@@ -112,6 +142,7 @@ async function initArpa() {
       store.eea = await loadEeaData();
       const itSites = (store.eea.sites || []).filter(s => s.country === "IT" || s.country === "ITA" || s.country === "Italy" || s.country === "IT ").length;
       log.info("EEA", `Loaded: ${store.eea.sites.length} sites total, ~${itSites} Italy, ${store.eea.pollutant.length} releases`);
+      buildEeaGrid();
     } else {
       log.info("EEA", "No EEA dataset found — download from industry.eea.europa.eu and unzip into backend/data/eea/");
     }
@@ -206,12 +237,16 @@ async function initRiverGeometries() {
     let official = 0;
     const riverNames = [];
     for (const river of store.rivers) {
+      if (river.geometry_locked && river.geom) {
+        official++;
+        continue;
+      }
       const resolved = resolveOfficialGeometry(store.hydrography, river);
       if (resolved?.geometry) {
         river.geom = resolved.geometry;
         Object.assign(river, resolved);
         official++;
-      } else {
+      } else if (!river.official_only) {
         riverNames.push(osmNameMap[river.name] || normalizeOsmName(river.name));
       }
     }
@@ -297,6 +332,11 @@ app.get("/api/rivers", (_req, res) => {
         source_dataset_version: r.source_dataset_version || null,
         source_feature_id: r.source_feature_id || null,
         geometry_quality: r.geometry_quality || "unmatched",
+        source_url: r.source_url || null,
+        source_license: r.source_license || null,
+        source_license_url: r.source_license_url || null,
+        source_period: r.source_period || null,
+        assessment_type: r.assessment_type || null,
         source_gaps: r.topology?.source_gaps ?? 0,
         artificial_connectors: r.topology?.artificial_connectors ?? 0,
         data_available: store.arpaMeasurements.size > 0 || store.arpatStretches.has(r.id)
@@ -360,7 +400,13 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
     });
     return res.json({
       river, stations: riverStations, parameters: summary,
-      source: river.source || "ARPA Lombardia", fetched_at: store.arpaFetchedAt
+      source: river.source || "ARPA Lombardia",
+      source_url: river.source_url || null,
+      source_license: river.source_license || null,
+      source_license_url: river.source_license_url || null,
+      source_period: river.source_period || null,
+      assessment_type: river.assessment_type || "measured_parameters",
+      fetched_at: store.arpaFetchedAt
     });
   }
 
@@ -369,14 +415,26 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
   if (arpat) {
     const stretches = arpat.stretches.map(s => ({
       name: s.name, water_body_code: s.water_body_code, comune: s.comune, status: s.status,
-      ecological: s.ecological, chemical: s.chemical, score: s.score
+      ecological: s.ecological, chemical: s.chemical,
+      indicator: s.indicator || null, indicator_year: s.indicator_year || null,
+      score: s.score, source_url: s.source_url || river.source_url || null,
+      meets_wfd_objective: s.indicator
+        ? ["Elevato", "Buono"].includes(s.status)
+        : (s.ecological == null || ["Elevato", "Buono"].includes(s.ecological))
+          && (s.chemical == null || /^Buono$/i.test(s.chemical))
     }));
     return res.json({
       river: { ...river, stretches },
       stations: [],
       parameters: [],
       stretches,
-      source: "ARPAT Toscana (D.M. 260/2010 — WFD)",
+      source: river.source,
+      source_url: river.source_url || null,
+      source_license: river.source_license || null,
+      source_license_url: river.source_license_url || null,
+      source_period: river.source_period || null,
+      assessment_type: "water_body_status",
+      assessment_method: river.assessment_type || null,
       fetched_at: store.arpaFetchedAt
     });
   }
@@ -700,7 +758,13 @@ function buildAccurateSegments(paramFilter) {
             ecological: stretch.ecological,
             chemical: stretch.chemical,
             has_real_data: true,
-            source: "ARPAT Toscana",
+            source: river.source,
+            source_url: stretch.source_url || river.source_url || null,
+            source_license: river.source_license || null,
+            source_license_url: river.source_license_url || null,
+            source_period: river.source_period || null,
+            assessment_type: river.assessment_type || null,
+            region: river.region,
             geometry_source: stretch.geometry_source,
             source_feature_id: stretch.source_feature_id,
             geometry_quality: "official",
@@ -753,6 +817,12 @@ function buildAccurateSegments(paramFilter) {
             to_snap_m: to.station_snap_distance_m,
             has_real_data: true,
             source: river.source || "ARPA",
+            source_url: river.source_url || null,
+            source_license: river.source_license || null,
+            source_license_url: river.source_license_url || null,
+            source_period: river.source_period || null,
+            assessment_type: river.assessment_type || null,
+            region: river.region,
             geometry_source: river.geometry_source,
             source_dataset_version: river.source_dataset_version,
             source_feature_id: river.source_feature_id,
@@ -811,12 +881,93 @@ app.get("/api/stations/:id/nearby-facilities", async (req, res) => {
       count: facilities.length,
       facilities,
       source: "OpenStreetMap (Overpass API)",
+      source_url: "https://wiki.openstreetmap.org/wiki/Overpass_API",
+      license_url: "https://www.openstreetmap.org/copyright",
       fetched_at: new Date().toISOString()
     });
   } catch (e) {
     log.error("API", `nearby-facilities failed for ${station.id}`, { error: e.message });
     res.status(502).json({ error: "Failed to query nearby facilities", detail: e.message });
   }
+});
+
+app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
+  const river = store.rivers.find(item => item.id === req.params.id);
+  if (!river?.geom) return res.status(404).json({ error: "River geometry not found" });
+  const radius = Math.min(5000, Math.max(500, Number(req.query.radius) || 3000));
+  const cacheKey = `${river.id}:${radius}`;
+  const cached = riverFacilityCache.get(cacheKey);
+  if (cached && Date.now() - cached.savedAt < RIVER_FACILITY_CACHE_MS) return res.json(cached.value);
+
+  let osmFacilities = [];
+  let osmError = null;
+  try {
+    osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
+  } catch (error) {
+    osmError = error.message;
+    log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
+  }
+
+  const eeaFacilities = Object.values(store.eea?.sites || {}).filter(site => {
+    if (!site?.lat || !site?.lon || !(site.country || "").toUpperCase().startsWith("IT")) return false;
+    return distanceToRiverMeters(site.lat, site.lon, river.geom) <= radius;
+  }).map(site => {
+    const releases = (store.eea?.pollutant || []).filter(item => item.siteId === site.id || item.facilityId === site.id);
+    return {
+      id: `eea/${site.id}`, name: site.name || "Unnamed EEA industrial site",
+      category: "industrial", category_label: site.sector || "EEA regulated industrial site",
+      lat: site.lat, lon: site.lon,
+      distance_to_river_m: distanceToRiverMeters(site.lat, site.lon, river.geom),
+      source: "EEA Industrial Emissions Portal", address: site.address || "", city: site.city || "",
+      release_count: releases.length,
+      pollutants: [...new Set(releases.map(item => item.pollutant).filter(Boolean))].slice(0, 8),
+      detail_url: `/api/eea/sites/${encodeURIComponent(site.id)}`,
+      external_url: EEA_IED.dataset_page
+    };
+  });
+
+  const facilities = [];
+  const seenNames = new Set();
+  for (const facility of [...eeaFacilities, ...osmFacilities]) {
+    const normalizedName = facility.name.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+    if (normalizedName && !normalizedName.startsWith("unnamed") && seenNames.has(normalizedName)) continue;
+    if (normalizedName && !normalizedName.startsWith("unnamed")) seenNames.add(normalizedName);
+    facilities.push(facility);
+  }
+  facilities.sort((a, b) => a.distance_to_river_m - b.distance_to_river_m);
+
+  const geojson = {
+    type: "FeatureCollection",
+    features: facilities.map(facility => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [facility.lon, facility.lat] },
+      properties: {
+        id: facility.id, name: facility.name, category: facility.category,
+        category_label: facility.category_label, source: facility.source,
+        distance_to_river_m: facility.distance_to_river_m,
+        address: facility.address || facility.osm_tags?.["addr:full"] || facility.osm_tags?.["addr:street"] || "",
+        operator: facility.osm_tags?.operator || "",
+        website: facility.osm_tags?.website || facility.osm_tags?.["contact:website"] || "",
+        release_count: facility.release_count || 0,
+        pollutants: (facility.pollutants || []).join(", "),
+        external_url: facility.osm_url || facility.external_url || ""
+      }
+    }))
+  };
+
+  const value = {
+    river: { id: river.id, name: river.name }, radius_m: radius,
+    count: facilities.length, osm_count: osmFacilities.length, eea_count: eeaFacilities.length,
+    facilities, geojson,
+    sources: [
+      { name: "OpenStreetMap", url: "https://www.openstreetmap.org/copyright", license: "ODbL 1.0" },
+      { name: "EEA Industrial Emissions Portal", url: EEA_IED.dataset_page, license: EEA_IED.license }
+    ],
+    warning: osmError ? `OpenStreetMap query unavailable: ${osmError}` : null,
+    fetched_at: new Date().toISOString()
+  };
+  riverFacilityCache.set(cacheKey, { savedAt: Date.now(), value });
+  res.json(value);
 });
 
 // --- Facilities categories (for frontend labels) ---
@@ -844,55 +995,125 @@ app.get("/api/eea/status", (_req, res) => {
 });
 
 // All Italian EEA sites as GeoJSON
-app.get("/api/eea/sites", (_req, res) => {
+app.get("/api/eea/sites", (req, res) => {
   const eea = store.eea;
-  if (!eea || eea.sites.length === 0) {
+  if (!eea || !eea.sites || eea.sites.length === 0) {
     return res.json({ type: "FeatureCollection", features: [], available: false });
   }
-  const it = eea.sites.filter(s => (s.country || "").toUpperCase().startsWith("IT") && s.lat && s.lon);
+  // Optional bbox filter: ?bbox=minLon,minLat,maxLon,maxLat
+  let sites = eea.sites;
+  if (req.query.bbox) {
+    const [minLon, minLat, maxLon, maxLat] = String(req.query.bbox).split(",").map(Number);
+    if ([minLon, minLat, maxLon, maxLat].every(Number.isFinite)) {
+      sites = sites.filter(s => s.lat != null && s.lon != null &&
+        s.lon >= minLon && s.lon <= maxLon && s.lat >= minLat && s.lat <= maxLat);
+    }
+  }
+  const limit = Math.min(5000, Number(req.query.limit) || 2000);
+  const slice = sites.slice(0, limit);
   res.json({
     type: "FeatureCollection",
-    features: it.map(s => ({
+    features: slice.map(s => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [s.lon, s.lat] },
       properties: {
         id: s.id, name: s.name, sector: s.sector || "",
         subsector: s.subsector || "", city: s.city || "",
-        address: s.address || ""
+        address: s.address || "",
+        pollutants: s.pollutants || null,
+        water_groups: s.water_groups || null,
+        has_release_data: !!s.has_release_data,
+        reporting_year: s.reporting_year || null
       }
     })),
     available: true,
-    count: it.length
+    count: slice.length,
+    total: sites.length,
+    truncated: sites.length > limit
   });
 });
 
 // EEA sites near a monitoring station (cross-reference with ARPA data)
+// Spatial grid index for EEA sites (built at boot, ~92k sites)
+let eeaGrid = null; // Map<"latIdx:lonIdx", [siteIndexes]>
+const GRID_STEP = 0.05; // ~5.5 km
+
+function buildEeaGrid() {
+  if (!store.eea || !store.eea.sites) return;
+  eeaGrid = new Map();
+  store.eea.sites.forEach((s, i) => {
+    if (s.lat == null || s.lon == null) return;
+    const key = `${Math.floor(s.lat / GRID_STEP)}:${Math.floor(s.lon / GRID_STEP)}`;
+    if (!eeaGrid.has(key)) eeaGrid.set(key, []);
+    eeaGrid.get(key).push(i);
+  });
+  log.info("EEA", `Spatial grid built: ${eeaGrid.size} cells for ${store.eea.sites.length} sites`);
+}
+
 app.get("/api/stations/:id/nearby-eea-sites", (req, res) => {
   const station = store.stations.find(s => s.id === req.params.id);
   if (!station) return res.status(404).json({ error: "Station not found" });
   const eea = store.eea;
-  if (!eea || eea.sites.length === 0) {
+  if (!eea || !eea.sites || eea.sites.length === 0) {
     return res.json({ available: false, sites: [], message: "EEA dataset not loaded" });
   }
   const radius = Math.min(20000, Math.max(500, Number(req.query.radius) || 5000));
-  const sites = eea.sites.filter(s => s.lat && s.lon && (s.country || "").toUpperCase().startsWith("IT"));
+  const radiusKm = radius / 1000;
+
+  // Query grid cells around the station
   const near = [];
-  for (const s of sites) {
-    const d = dist(station.lat, station.lon, s.lat, s.lon);
-    if (d <= radius / 1000) {
-      // attach releases for this site
-      const releases = eea.pollutant.filter(p => p.siteId === s.id || p.facilityId === s.id);
-      near.push({
-        ...s,
-        distance_km: Number(d.toFixed(2)),
-        releases: releases.slice(0, 10),
-        release_count: releases.length,
-        has_releases: releases.length > 0
-      });
+  if (eeaGrid) {
+    const latMin = Math.floor((station.lat - radiusKm / 111) / GRID_STEP);
+    const latMax = Math.floor((station.lat + radiusKm / 111) / GRID_STEP);
+    const lonMin = Math.floor((station.lon - radiusKm / (111 * Math.cos(station.lat * Math.PI / 180))) / GRID_STEP);
+    const lonMax = Math.floor((station.lon + radiusKm / (111 * Math.cos(station.lat * Math.PI / 180))) / GRID_STEP);
+    const seen = new Set();
+    for (let la = latMin; la <= latMax; la++) {
+      for (let lo = lonMin; lo <= lonMax; lo++) {
+        const cell = eeaGrid.get(`${la}:${lo}`);
+        if (!cell) continue;
+        for (const idx of cell) {
+          if (seen.has(idx)) continue;
+          seen.add(idx);
+          const s = eea.sites[idx];
+          const d = dist(station.lat, station.lon, s.lat, s.lon);
+          if (d <= radiusKm) {
+            near.push({
+              ...s,
+              distance_km: Number(d.toFixed(2)),
+              release_count: s.has_release_data ? 1 : 0,
+              has_releases: !!s.has_release_data
+            });
+          }
+        }
+      }
+    }
+  } else {
+    for (const s of eea.sites) {
+      if (s.lat == null || s.lon == null) continue;
+      const d = dist(station.lat, station.lon, s.lat, s.lon);
+      if (d <= radiusKm) {
+        near.push({
+          ...s,
+          distance_km: Number(d.toFixed(2)),
+          release_count: s.has_release_data ? 1 : 0,
+          has_releases: !!s.has_release_data
+        });
+      }
     }
   }
   near.sort((a, b) => a.distance_km - b.distance_km);
-  res.json({ station, radius_m: radius, count: near.length, sites: near.slice(0, 30) });
+  // Deduplicate by stable site identity (dataset has one row per reporting
+  // year). Prefer inspire_id, fall back to name+rounded coords.
+  const seenIds = new Set();
+  const deduped = [];
+  for (const s of near) {
+    const key = s.inspire_id || `${s.name}|${s.lat?.toFixed(4)}|${s.lon?.toFixed(4)}`;
+    if (seenIds.has(key)) continue;
+    seenIds.add(key);
+    deduped.push(s);
+  }
+  res.json({ station, radius_m: radius, count: deduped.length, sites: deduped.slice(0, 30) });
 });
 
 // Site detail with all releases
@@ -931,12 +1152,21 @@ app.get("/api/arpa-regions", (_req, res) => {
 app.get("/api/data-sources", (_req, res) => {
   res.json({
     water_quality: {
-      source: "ARPA Lombardia (Socrata API)",
-      dataset: "ixjj-e763",
-      license: "CC0 1.0 Public Domain",
-      coverage: "Lombardia (18 basins, 304 stations, 14 parameters)",
+      source: "Official regional environmental agencies",
+      dataset: "Five integrated regional datasets",
+      license: "Dataset-specific open terms",
+      source_url: "https://www.snpambiente.it/",
+      license_url: null,
+      coverage: "Lombardia, Toscana, Emilia-Romagna, Piemonte and Veneto",
       other_regions: ARPA_REGIONS.filter(r => r.status !== "integrated").length + " regions researched, pending integration",
-      regions: ARPA_REGIONS
+      regions: ARPA_REGIONS,
+      sources: ARPA_REGIONS.filter(region => region.status === "integrated").map(region => ({
+        name: region.arpa, region: region.name, dataset: region.water_quality_dataset,
+        source_url: region.dataset_url || region.portal,
+        download_url: region.download_url || null,
+        portal_url: region.portal, license: region.license || "See source terms",
+        license_url: region.license_url || null, notes: region.notes
+      }))
     },
     river_geometries: {
       source: "Official regional/WFD hydrography with topology-safe OSM fallback",
@@ -948,19 +1178,33 @@ app.get("/api/data-sources", (_req, res) => {
       osm_fallback_rivers: store.rivers.filter(r => r.geometry_source === "OpenStreetMap").length,
       unmatched_rivers: store.rivers.filter(r => !r.geom).length,
       artificial_connectors: 0,
-      datasets: store.hydrography?.datasets || []
+      datasets: store.hydrography?.datasets || [],
+      osm_url: "https://www.openstreetmap.org/copyright",
+      eea_url: "https://water.discomap.eea.europa.eu/arcgis/rest/services/WISE_WFD/WFD2022_SurfaceWaterBody_WM/MapServer/16"
     },
     industrial_facilities: {
       source: "OpenStreetMap (Overpass API)",
       license: "ODbL 1.0",
+      source_url: "https://wiki.openstreetmap.org/wiki/Overpass_API",
+      license_url: "https://www.openstreetmap.org/copyright",
       categories: Object.keys(CATEGORY_LABELS),
-      radius_default: "3000m around each station"
+      radius_default: "3000m corridor from the actual river line; station lookup also available"
     },
     eea_industrial_emissions: {
       portal: EEA_IED.portal,
       dataset_page: EEA_IED.dataset_page,
       license: EEA_IED.license,
+      license_url: EEA_IED.license_url,
       notes: EEA_IED.notes
+    },
+    wikimedia: {
+      wikidata_url: "https://www.wikidata.org/",
+      wikipedia_url: "https://www.wikipedia.org/",
+      wikidata_license: "CC0",
+      wikipedia_license: "CC BY-SA",
+      api_docs_url: "https://www.mediawiki.org/wiki/Wikibase/API",
+      wikipedia_api_docs_url: "https://www.mediawiki.org/wiki/Wikimedia_REST_API",
+      environmental_incident_class_url: "https://www.wikidata.org/wiki/Q3193890"
     },
     updated_at: store.arpaFetchedAt || new Date().toISOString()
   });

@@ -48,13 +48,15 @@ export function loadOfficialHydrography() {
     for (const feature of collection.features || []) {
       if (!geometryLines(feature.geometry).some(line => line.length > 1)) continue;
       const properties = feature.properties || {};
-      const code = normalized(firstProperty(properties, dataset.code_fields));
+      const codes = [...new Set((dataset.code_fields || [])
+        .map(field => normalized(properties?.[field])).filter(Boolean))];
+      const code = codes[0] || "";
       const name = normalized(firstProperty(properties, dataset.name_fields));
       const featureId = firstProperty(properties, dataset.feature_id_fields) ?? feature.id ?? null;
-      const record = { feature, dataset, featureId, code, name };
-      if (code) {
-        if (!catalog.byCode.has(code)) catalog.byCode.set(code, []);
-        catalog.byCode.get(code).push(record);
+      const record = { feature, dataset, featureId, code, codes, name };
+      for (const indexedCode of codes) {
+        if (!catalog.byCode.has(indexedCode)) catalog.byCode.set(indexedCode, []);
+        catalog.byCode.get(indexedCode).push(record);
       }
       if (name) {
         if (!catalog.byName.has(name)) catalog.byName.set(name, []);
