@@ -13,6 +13,7 @@ export default function App() {
   const [stations, setStations] = useState(null);
   const [dataSources, setDataSources] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [selectedStation, setSelectedStation] = useState(null);
   const [drawer, setDrawer] = useState(null);
   const [drawerFullscreen, setDrawerFullscreen] = useState(false);
   const [flyTo, setFlyTo] = useState(null);
@@ -37,7 +38,13 @@ export default function App() {
     return {
       type: "FeatureCollection",
       features: segments.features.filter(feature => {
-        const score = feature.properties.pollution_score;
+        const properties = feature.properties;
+        const selectedReach = selectedStation &&
+          (!selectedStation.river_id || properties.river_id === selectedStation.river_id) &&
+          (properties.from_station_id === selectedStation.id || properties.to_station_id === selectedStation.id ||
+            properties.from_station === selectedStation.name || properties.to_station === selectedStation.name);
+        if (selectedReach) return true;
+        const score = properties.pollution_score;
         if (score == null) return levelsShown.nodata;
         if (score < 0.25) return levelsShown.clean;
         if (score < 0.45) return levelsShown.low;
@@ -46,7 +53,7 @@ export default function App() {
         return levelsShown.critical;
       })
     };
-  }, [segments, levelsShown]);
+  }, [segments, levelsShown, selectedStation]);
 
   useEffect(() => {
     Promise.all([
@@ -141,6 +148,7 @@ export default function App() {
     });
     setDrawer("river");
     setDrawerFullscreen(false);
+    setSelectedStation(null);
     setLayers(previous => ({ ...previous, facilities: true }));
   }, [setLayers]);
 
@@ -159,11 +167,24 @@ export default function App() {
 
   const closeDrawer = useCallback(() => {
     setDrawer(null); setSelected(null); setRiverFacilities(null);
+    setSelectedStation(null);
     setDrawerFullscreen(false);
   }, []);
   const toggleLayer = useCallback((key, value) => setLayers(previous => ({ ...previous, [key]: value })), [setLayers]);
   const toggleLevel = useCallback((key, value) => setLevelsShown(previous => ({ ...previous, [key]: value })), [setLevelsShown]);
-  const handleStationClick = useCallback((lat, lon) => setFlyTo([lat, lon, Date.now()]), []);
+  const handleStationClick = useCallback((lat, lon, station = null) => {
+    setFlyTo([lat, lon, Date.now(), station?.id ? 12.5 : 11]);
+    if (station?.id) {
+      setSelectedStation({
+        id: station.id,
+        name: station.name,
+        river_id: station.river_id,
+        lat,
+        lon
+      });
+      setLayers(previous => ({ ...previous, stations: true, segments: true }));
+    }
+  }, [setLayers]);
   const neonMode = basemap === "neon";
   const effectiveUiTheme = uiTheme === "light" ? "light" : "dark";
 
@@ -177,7 +198,7 @@ export default function App() {
     eeaSites: layers.eeaSites ? eeaSites : null,
     showSegments: layers.segments, showNetwork: layers.network !== false,
     showLabels: layers.labels, basemap, onRiverClick: handleRiverClick,
-    onStationClick: handleStationClick, flyTo,
+    onStationClick: handleStationClick, selectedStation, flyTo,
     riverFacilities: layers.facilities ? riverFacilities?.geojson : null
   };
 

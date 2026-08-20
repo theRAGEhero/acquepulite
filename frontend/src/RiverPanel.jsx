@@ -96,7 +96,7 @@ export default function RiverPanel({
   }, [river.id, populationAttempt]);
 
   const handleStationClick = (s) => {
-    onStationClick(s.lat, s.lon);
+    onStationClick(s.snapped_lat ?? s.lat, s.snapped_lon ?? s.lon, s);
     setFacilitiesStation(s);
   };
 
@@ -194,18 +194,19 @@ export default function RiverPanel({
 
           <div className="section-title">Monitoring stations</div>
           {summary.stations.map(s => (
-            <div
+            <button
+              type="button"
               key={s.id}
-              className="station-item"
+              className={`station-item ${facilitiesStation?.id === s.id ? "selected" : ""}`}
               onClick={() => handleStationClick(s)}
-              style={{ justifyContent: "space-between" }}
+              aria-pressed={facilitiesStation?.id === s.id}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="dot real"></span>
                 {s.name}
               </span>
-              {facilitiesStation?.id === s.id && <span style={{ fontSize: 10, color: "#2563eb" }}>●</span>}
-            </div>
+              {facilitiesStation?.id === s.id && <span className="station-map-state">Reach highlighted</span>}
+            </button>
           ))}
 
           {facilitiesStation && (

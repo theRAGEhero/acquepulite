@@ -75,14 +75,14 @@ function applyNeonBaseStyle(map) {
 
 export default function MapView3D({
   rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork = true, showLabels, showTerrain, basemap,
-  onRiverClick, onStationClick, flyTo, flat = false
+  onRiverClick, onStationClick, selectedStation, flyTo, flat = false
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const refs = useRef({ handlers: [] });
   refs.current = {
     ...refs.current, rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels,
-    showTerrain, basemap, onRiverClick, onStationClick, flat
+    showTerrain, basemap, onRiverClick, onStationClick, selectedStation, flat
   };
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export default function MapView3D({
     const map = mapRef.current;
     if (map?.isStyleLoaded()) addLayers(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments, rivers, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels]);
+  }, [segments, rivers, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels, selectedStation]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -129,7 +129,7 @@ export default function MapView3D({
   useEffect(() => {
     if (!mapRef.current || !flyTo) return;
     mapRef.current.flyTo({
-      center: [flyTo[1], flyTo[0]], zoom: 11, pitch: flat ? 0 : 55, bearing: 0, duration: 2000
+      center: [flyTo[1], flyTo[0]], zoom: flyTo[3] ?? 11, pitch: flat ? 0 : 55, bearing: 0, duration: 2000
     });
   }, [flyTo, flat]);
 
@@ -171,7 +171,8 @@ export default function MapView3D({
 
     for (const id of [
       "segments", "segments-glow", "rivers-2d", "rivers-glow", "rivers-casing",
-      "stations", "stations-glow", "river-labels", "eea-sites", "eea-sites-glow",
+      "selected-reach", "selected-reach-outline", "selected-reach-halo",
+      "stations", "stations-glow", "selected-station-pulse", "selected-station-label", "river-labels", "eea-sites", "eea-sites-glow",
       "river-facilities", "river-facilities-glow",
       "hydro-network", "hydro-network-glow", "rivers-context"
     ]) if (map.getLayer(id)) map.removeLayer(id);
@@ -197,6 +198,8 @@ export default function MapView3D({
     }
 
     if (data.showSegments && data.segments?.features?.length) {
+      const hasSelectedReach = data.selectedStation && data.segments.features.some(feature =>
+        reachBelongsToStation(feature.properties, data.selectedStation));
       map.addSource("segments-src", { type: "geojson", data: clone(data.segments) });
       map.addLayer({
         id: "rivers-casing", type: "line", source: "segments-src",
@@ -210,9 +213,10 @@ export default function MapView3D({
         paint: {
           "line-color": neon ? NEON_POLLUTION_COLOR : ["get", "color"],
           "line-width": ["interpolate", ["linear"], ["zoom"], 5, neon ? 4 : 3, 8, neon ? 6 : 5, 12, neon ? 12 : 10],
-          "line-opacity": 0.98
+          "line-opacity": hasSelectedReach ? 0.2 : 0.98
         }
       });
+      if (hasSelectedReach) addSelectedReach(map, data.selectedStation, neon);
       bindSegmentEvents(map, data);
     } else if (data.rivers?.features?.length) {
       const standardColors = [
@@ -275,6 +279,38 @@ export default function MapView3D({
     });
   }
 
+  function addSelectedReach(map, station, neon) {
+    const filter = selectedReachFilter(station);
+    map.addLayer({
+      id: "selected-reach-halo", type: "line", source: "segments-src", filter,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#27e6ff",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 24, 9, 40, 13, 58],
+        "line-opacity": neon ? 0.55 : 0.42,
+        "line-blur": 10
+      }
+    });
+    map.addLayer({
+      id: "selected-reach-outline", type: "line", source: "segments-src", filter,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": neon ? "#efffff" : "#ffffff",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 8, 9, 15, 13, 22],
+        "line-opacity": 0.98
+      }
+    });
+    map.addLayer({
+      id: "selected-reach", type: "line", source: "segments-src", filter,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": neon ? NEON_POLLUTION_COLOR : ["get", "color"],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 5, 9, 10, 13, 16],
+        "line-opacity": 1
+      }
+    });
+  }
+
   function bindSegmentEvents(map, data) {
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 10 });
     addEvent(map, "mouseenter", "segments", (e) => {
@@ -331,6 +367,8 @@ export default function MapView3D({
 
   function addStations(map, data, clone, neon) {
     map.addSource("stations-src", { type: "geojson", data: clone(data.stations) });
+    const selectedId = data.selectedStation?.id || "__no_selected_station__";
+    const isSelected = ["==", ["get", "id"], selectedId];
     if (neon) {
       map.addLayer({
         id: "stations-glow", type: "circle", source: "stations-src", minzoom: 6,
@@ -341,14 +379,42 @@ export default function MapView3D({
         }
       });
     }
+    if (data.selectedStation?.id) {
+      map.addLayer({
+        id: "selected-station-pulse", type: "circle", source: "stations-src", minzoom: 5,
+        filter: isSelected,
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 18, 10, 30, 14, 42],
+          "circle-color": "#27e6ff", "circle-opacity": 0.32, "circle-blur": 0.7,
+          "circle-stroke-color": "#ffffff", "circle-stroke-width": 2
+        }
+      });
+    }
     map.addLayer({
       id: "stations", type: "circle", source: "stations-src", minzoom: 6,
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 3, 10, 7],
+        "circle-radius": ["case", isSelected,
+          ["interpolate", ["linear"], ["zoom"], 5, 7, 10, 12],
+          ["interpolate", ["linear"], ["zoom"], 5, 3, 10, 7]],
         "circle-color": ["case", ["==", ["get", "has_real_data"], true], neon ? "#b8fff7" : "#34d399", neon ? "#62c8ff" : "#60a5fa"],
-        "circle-stroke-color": "#07111f", "circle-stroke-width": 2, "circle-opacity": 0.95
+        "circle-stroke-color": ["case", isSelected, "#ffffff", "#07111f"],
+        "circle-stroke-width": ["case", isSelected, 4, 2], "circle-opacity": 0.95
       }
     });
+    if (data.selectedStation?.id) {
+      map.addLayer({
+        id: "selected-station-label", type: "symbol", source: "stations-src", minzoom: 5,
+        filter: isSelected,
+        layout: {
+          "text-field": ["concat", "MONITORING STATION\n", ["get", "name"]],
+          "text-size": 12, "text-anchor": "bottom", "text-offset": [0, -1.4],
+          "text-allow-overlap": true
+        },
+        paint: {
+          "text-color": "#ffffff", "text-halo-color": "#04131d", "text-halo-width": 3
+        }
+      });
+    }
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 15 });
     addEvent(map, "mouseenter", "stations", (e) => {
       map.getCanvas().style.cursor = "pointer";
@@ -357,7 +423,9 @@ export default function MapView3D({
     addEvent(map, "mouseleave", "stations", () => { map.getCanvas().style.cursor = ""; });
     addEvent(map, "click", "stations", (e) => {
       const [lon, lat] = e.features[0].geometry.coordinates;
-      data.onStationClick(lat, lon);
+      const properties = e.features[0].properties;
+      e.originalEvent?.stopPropagation();
+      data.onStationClick(lat, lon, { ...properties, lat, lon });
     });
   }
 
@@ -430,6 +498,26 @@ export default function MapView3D({
   }
 
   return <div ref={containerRef} style={{ height: "100%", width: "100%" }} />;
+}
+
+function reachBelongsToStation(properties, station) {
+  if (!properties || !station) return false;
+  if (station.river_id && properties.river_id !== station.river_id) return false;
+  return properties.from_station_id === station.id || properties.to_station_id === station.id ||
+    properties.from_station === station.name || properties.to_station === station.name;
+}
+
+function selectedReachFilter(station) {
+  const endpoints = [
+    "any",
+    ["==", ["get", "from_station_id"], station.id],
+    ["==", ["get", "to_station_id"], station.id],
+    ["==", ["get", "from_station"], station.name],
+    ["==", ["get", "to_station"], station.name]
+  ];
+  return station.river_id
+    ? ["all", ["==", ["get", "river_id"], station.river_id], endpoints]
+    : endpoints;
 }
 
 function escapeHtml(value) {

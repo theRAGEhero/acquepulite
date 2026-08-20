@@ -147,8 +147,10 @@ html, body, #root {
 }
 
 .station-item {
+  width: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   background: #fff;
@@ -156,6 +158,9 @@ html, body, #root {
   border-radius: 8px;
   margin-bottom: 5px;
   cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
   font-size: 13px;
   transition: all 0.15s;
 }
@@ -163,6 +168,20 @@ html, body, #root {
 .station-item:hover {
   background: #f0f5ff;
   border-color: #c8d4e6;
+}
+
+.station-item.selected {
+  background: rgba(32, 201, 255, 0.12);
+  border-color: #20c9ff;
+  box-shadow: inset 3px 0 0 #20c9ff, 0 0 16px rgba(32, 201, 255, 0.14);
+}
+
+.station-map-state {
+  flex: 0 0 auto;
+  color: #20c9ff;
+  font: 700 9px "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .station-item .dot {
@@ -1608,6 +1627,12 @@ html, body, #root {
 .app.light-ui .monitor-drawer .param-card .bar { background: #dbe8ed; }
 .app.light-ui .monitor-drawer .station-item:hover,
 .app.light-ui .company-row:hover { background: #e4f2f7; border-color: #63a6bd; }
+.app.light-ui .monitor-drawer .station-item.selected {
+  background: #dcf4fa;
+  border-color: #0896bd;
+  box-shadow: inset 3px 0 0 #0896bd, 0 0 14px rgba(8, 150, 189, .12);
+}
+.app.light-ui .station-map-state { color: #087fa6; }
 
 .app.light-ui .knowledge-card {
   color: #17384a;
