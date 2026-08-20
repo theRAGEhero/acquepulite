@@ -27,6 +27,27 @@ function claimEntityIds(entity, property) {
     .map(claim => claim?.mainsnak?.datavalue?.value?.id).filter(Boolean);
 }
 
+function coordinatePairs(geometry) {
+  const pairs = [];
+  function visit(value) {
+    if (!Array.isArray(value)) return;
+    if (value.length >= 2 && Number.isFinite(value[0]) && Number.isFinite(value[1])) {
+      pairs.push(value);
+      return;
+    }
+    for (const child of value) visit(child);
+  }
+  visit(geometry?.coordinates);
+  return pairs;
+}
+
+function distanceKm(lon1, lat1, lon2, lat2) {
+  const toRad = value => value * Math.PI / 180;
+  const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lon2 - lon1) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export function scoreRiverCandidate(river, entity) {
   const riverName = normalizeName(river.name);
   const labels = [entity.labels?.it?.value, entity.labels?.en?.value].filter(Boolean);
@@ -42,6 +63,17 @@ export function scoreRiverCandidate(river, entity) {
   if (claimEntityIds(entity, "P17").includes("Q38")) score += 35;
   if (claimEntityIds(entity, "P31").some(id => WATER_TYPES.has(id))) score += 20;
   if (entity.sitelinks?.itwiki || entity.sitelinks?.enwiki) score += 5;
+  const coordinate = entity?.claims?.P625?.[0]?.mainsnak?.datavalue?.value;
+  const riverPairs = coordinatePairs(river.geom);
+  if (Number.isFinite(coordinate?.longitude) && Number.isFinite(coordinate?.latitude) && riverPairs.length) {
+    const nearest = riverPairs.reduce((minimum, pair) => Math.min(
+      minimum, distanceKm(coordinate.longitude, coordinate.latitude, pair[0], pair[1])
+    ), Infinity);
+    if (nearest <= 50) score += 40;
+    else if (nearest <= 150) score += 25;
+    else if (nearest <= 350) score += 8;
+    else if (nearest >= 500) score -= 35;
+  }
   return score;
 }
 
