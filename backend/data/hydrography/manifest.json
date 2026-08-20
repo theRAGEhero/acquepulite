@@ -1,0 +1,30 @@
+{
+  "datasets": [
+    {
+      "id": "wise-wfd-2022-it",
+      "title": "WISE WFD 2022 SurfaceWaterBodyLine",
+      "version": "2022-v1.7-2024-07",
+      "license": "EEA standard re-use policy / CC BY 4.0",
+      "priority": 200,
+      "file": "wise-wfd-2022-it.geojson",
+      "source_url": "https://water.discomap.eea.europa.eu/arcgis/rest/services/WISE_WFD/WFD2022_SurfaceWaterBody_WM/MapServer/16",
+      "downloaded_at": "2026-08-20T20:19:19.848Z",
+      "sha256": "f58f982f84e6ef50f0e2f4049d94d764f07ea406fc52a696140031e7b407c6de",
+      "code_fields": [
+        "thematicIdIdentifier",
+        "euSurfaceWaterBodyCode",
+        "waterBodyIdentifier"
+      ],
+      "name_fields": [
+        "nameText",
+        "nameTextInternational",
+        "waterBodyName"
+      ],
+      "feature_id_fields": [
+        "inspireIdLocalId",
+        "thematicIdIdentifier",
+        "OBJECTID"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+**/node_modules/
+frontend/dist/
+frontend/*-preview.png
+*.log
+.env
+.env.*
+.DS_Store
+
+# Downloaded/generated bulk environmental datasets
+backend/data/**/*.csv
+backend/data/**/*.geojson
+backend/data/eea/
+
+# Local repository bootstrap helper
+backend/commitRepository.mjs
