@@ -5,8 +5,8 @@
 import { log } from "./logger.js";
 
 const OVERPASS_ENDPOINTS = [
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 ];
 
@@ -67,16 +67,13 @@ const CATEGORY_LABELS = {
 
 const CORRIDOR_FILTERS = [
   '["industrial"]',
-  '["company"]',
-  '["landuse"~"industrial|farmland|greenhouse_horticulture|quarry|landfill|railway|port"]',
+  '["landuse"~"industrial|quarry|landfill|port"]',
   '["man_made"~"wastewater_plant|pumping_station|storage_tank|mine|tailings|pipeline"]',
-  '["building"~"industrial|farm_auxiliary"]',
+  '["building"="industrial"]["name"]',
   '["craft"~"chemical|plating|brewery|sawmill|winery|pottery"]',
-  '["shop"~"wholesale|trade|hardware|agrarian|chemical|paint"]["name"]',
   '["amenity"~"fuel|animal_boarding|loading_dock"]',
   '["facility"~"wastewater|water_works"]',
-  '["farm"]',
-  '["resource"]'
+  '["farm"]["name"]'
 ];
 
 function buildQuery(lat, lon, radius) {
@@ -101,17 +98,17 @@ function downsampleLine(line, maximumPoints) {
   return sampled;
 }
 
-function buildCorridorQuery(geometry, radius) {
+export function buildCorridorQuery(geometry, radius) {
   const lines = geometryLines(geometry).filter(line => line.length > 0);
   const totalVertices = lines.reduce((sum, line) => sum + line.length, 0) || 1;
   const corridors = lines.map(line => {
-    const allowance = Math.max(2, Math.round(40 * line.length / totalVertices));
+    const allowance = Math.max(2, Math.round(28 * line.length / totalVertices));
     const coordinates = downsampleLine(line, allowance)
       .map(([lon, lat]) => `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`).join(",");
     return `(around:${radius},${coordinates})`;
   });
   const filters = corridors.flatMap(corridor => CORRIDOR_FILTERS.map(tags => `nwr${tags}${corridor};`)).join("");
-  return `[out:json][timeout:8];(${filters});out tags center 3000;`;
+  return `[out:json][timeout:14];(${filters});out tags center 2000;`;
 }
 
 async function tryOverpass(query, timeoutMs = 20000) {
@@ -119,7 +116,11 @@ async function tryOverpass(query, timeoutMs = 20000) {
       log.debug("OVERPASS", `Trying ${url}`);
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "AcquePulite/1.0 (river monitoring research dashboard)",
+          Referer: "http://localhost:5173/"
+        },
         body: "data=" + encodeURIComponent(query),
         signal: AbortSignal.timeout(timeoutMs)
       });
@@ -235,7 +236,7 @@ export async function queryNearbyFacilities(lat, lon, radius = 3000) {
 export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
   const query = buildCorridorQuery(geometry, radius);
   log.info("OVERPASS", `Querying facilities within ${radius}m of river geometry`);
-  const data = await tryOverpass(query, 9000);
+  const data = await tryOverpass(query, 16000);
   const seen = new Set();
   const facilities = [];
   for (const el of data.elements || []) {

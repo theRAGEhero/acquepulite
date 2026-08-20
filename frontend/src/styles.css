@@ -952,6 +952,12 @@ html, body, #root {
   border-color: rgba(255, 190, 45, .28);
 }
 .facility-warning.partial strong { display: block; margin-bottom: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
+.facility-source-status { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.facility-source-status span { padding: 4px 7px; border: 1px solid; border-radius: 10px; font: 7px "SFMono-Regular", Consolas, monospace; letter-spacing: .04em; text-transform: uppercase; }
+.facility-source-status .complete { color: #71e6ae; background: rgba(53, 245, 138, .06); border-color: rgba(53, 245, 138, .22); }
+.facility-source-status .loading { color: #7fdcf7; background: rgba(45, 212, 255, .06); border-color: rgba(45, 212, 255, .22); }
+.facility-source-status .unavailable { color: #d0ad63; background: rgba(255, 190, 45, .06); border-color: rgba(255, 190, 45, .22); }
+.facility-source-status .deferred { color: #9bb8c5; background: rgba(139, 166, 179, .06); border-color: rgba(139, 166, 179, .2); }
 .facility-progress {
   display: flex;
   align-items: center;
@@ -1657,6 +1663,10 @@ html, body, #root {
 .app.light-ui .service-state.error button,
 .app.light-ui .service-actions a { color: #08799e; background: #e8f5f9; border-color: rgba(8, 127, 166, .24); }
 .app.light-ui .facility-warning.partial { color: #7a5600; background: #fff8df; border-color: #e3c66b; }
+.app.light-ui .facility-source-status .complete { color: #087555; background: #e8f8f0; border-color: #8bcab0; }
+.app.light-ui .facility-source-status .loading { color: #08799e; background: #e8f5f9; border-color: #91c9da; }
+.app.light-ui .facility-source-status .unavailable { color: #735500; background: #fff8df; border-color: #dfc66f; }
+.app.light-ui .facility-source-status .deferred { color: #55717e; background: #eef3f5; border-color: #bdcdd4; }
 
 .app.light-ui .maplibregl-ctrl-group,
 .app.light-ui .maplibregl-ctrl-scale {

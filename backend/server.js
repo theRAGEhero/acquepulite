@@ -918,14 +918,7 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
 
   let osmFacilities = [];
   let osmError = null;
-  if (sourceMode === "all") {
-    try {
-      osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
-    } catch (error) {
-      osmError = error.message;
-      log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
-    }
-  }
+  let osmSkippedReason = null;
 
   let indexedEea = { sites: [], candidateCount: 0 };
   let eeaFacilities = [];
@@ -958,6 +951,19 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
   } catch (error) {
     eeaError = error.message;
     log.warn("EEA", `River corridor lookup failed for ${river.name}: ${error.message}`);
+  }
+
+  if (sourceMode === "all") {
+    if (eeaFacilities.length >= 100) {
+      osmSkippedReason = "Local EEA registry already provides high corridor coverage";
+    } else {
+      try {
+        osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
+      } catch (error) {
+        osmError = error.message;
+        log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
+      }
+    }
   }
 
   const facilities = [];
@@ -998,7 +1004,8 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
     count: facilities.length, osm_count: finalOsmCount, eea_count: finalEeaCount,
     osm_records_matched: osmFacilities.length, eea_records_matched: eeaFacilities.length,
     source_mode: sourceMode,
-    osm_status: sourceMode === "eea" ? "not_requested" : osmError ? "unavailable" : "complete",
+    osm_status: sourceMode === "eea" ? "not_requested" : osmSkippedReason ? "deferred" : osmError ? "unavailable" : "complete",
+    osm_skip_reason: osmSkippedReason,
     eea_status: eeaError ? "unavailable" : "complete",
     eea_candidates_scanned: indexedEea.candidateCount,
     query_duration_ms: Date.now() - startedAt,
@@ -1008,9 +1015,11 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
       { name: "EEA Industrial Emissions Portal", url: EEA_IED.dataset_page, license: EEA_IED.license }
     ],
     warning: [
-      osmError ? `OpenStreetMap query unavailable: ${osmError}. Showing EEA registry results.` : null,
+      osmError ? "OpenStreetMap enrichment is temporarily unavailable. EEA registry results remain available." : null,
       eeaError ? `EEA registry lookup unavailable: ${eeaError}. Showing OpenStreetMap results.` : null
     ].filter(Boolean).join(" ") || null,
+    osm_error_detail: osmError,
+    osm_retry_after_seconds: osmError ? 120 : null,
     fetched_at: new Date().toISOString()
   };
   riverFacilityCache.set(cacheKey, {

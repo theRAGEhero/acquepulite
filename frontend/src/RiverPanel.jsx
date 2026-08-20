@@ -339,12 +339,22 @@ function RiverCompanies({ data, loading, error, onCompanyClick }) {
       {loading && !data && <div className="loading">Checking the indexed EEA industrial registry…</div>}
       {loading && data && <div className="facility-progress"><span /> EEA results ready · checking OpenStreetMap…</div>}
       {error && <div className="facility-warning">Facility scan failed: {error}</div>}
-      {data?.warning && <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}</div>}
+      {data && <div className="facility-source-status" aria-label="Facility source status">
+        <span className={data.eea_status === "unavailable" ? "unavailable" : "complete"}>
+          EEA registry · {data.eea_status === "unavailable" ? "unavailable" : `${data.eea_count} records`}
+        </span>
+        <span className={data.osm_status === "unavailable" ? "unavailable" : data.osm_status === "loading" ? "loading" : data.osm_status === "deferred" ? "deferred" : "complete"}
+          title={data.osm_skip_reason || undefined}>
+          OSM enrichment · {data.osm_status === "unavailable" ? "temporarily unavailable" : data.osm_status === "loading" ? "checking" : data.osm_status === "deferred" ? "deferred · strong EEA coverage" : `${data.osm_count} records`}
+        </span>
+      </div>}
+      {data?.warning && (data.count === 0 || data.eea_status === "unavailable") &&
+        <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}</div>}
       {data && data.count === 0 && !loading && <div className="loading">No mapped companies found in this corridor.</div>}
       {data && data.count > 0 && (
         <>
           <div className="facility-toolbar">
-            <span>OSM {data.osm_count} · EEA {data.eea_count} · {data.query_duration_ms ?? "—"} ms</span>
+            <span>{data.count} combined records · {data.query_duration_ms ?? "—"} ms</span>
             <select value={category} onChange={event => { setCategory(event.target.value); setShowAll(false); }}>
               <option value="all">All categories</option>
               {categories.map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
