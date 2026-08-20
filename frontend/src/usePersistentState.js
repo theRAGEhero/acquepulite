@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { reportClientError } from "./telemetry.js";
 
 // usePersistentState — like useState but synced to localStorage.
 // Key is namespaced under "rivermap:" to avoid collisions.
@@ -8,14 +9,18 @@ export function usePersistentState(key, defaultValue) {
     try {
       const stored = localStorage.getItem(fullKey);
       if (stored != null) return JSON.parse(stored);
-    } catch (e) { /* ignore parse errors */ }
+    } catch (error) {
+      reportClientError(error, { kind: "local-storage-read", severity: "warning" });
+    }
     return defaultValue;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem(fullKey, JSON.stringify(value));
-    } catch (e) { /* ignore quota errors */ }
+    } catch (error) {
+      reportClientError(error, { kind: "local-storage-write", severity: "warning" });
+    }
   }, [fullKey, value]);
 
   return [value, setValue];

@@ -2,6 +2,7 @@
 frontend/dist/
 frontend/*-preview.png
 *.log
+backend/logs/
 .env
 .env.*
 .DS_Store

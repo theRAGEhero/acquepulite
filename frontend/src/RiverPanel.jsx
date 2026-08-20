@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import FacilitiesPanel from "./FacilitiesPanel.jsx";
+import { apiFetch } from "./telemetry.js";
 
 const WFD_LABEL = {
   high: "High", good: "Good", moderate: "Moderate",
@@ -45,7 +46,7 @@ export default function RiverPanel({
     setSummary(null);
     setSummaryError(null);
     setFacilitiesStation(null);
-    fetch(`/api/rivers/${river.id}/pollution-summary`, { signal: controller.signal })
+    apiFetch(`/api/rivers/${river.id}/pollution-summary`, { signal: controller.signal })
       .then(response => {
         if (!response.ok) throw new Error(`Agency service returned ${response.status}`);
         return response.json();
@@ -63,7 +64,7 @@ export default function RiverPanel({
     setKnowledge(null);
     setKnowledgeLoading(true);
     setKnowledgeError(null);
-    fetch(`/api/rivers/${river.id}/knowledge`, { signal: controller.signal })
+    apiFetch(`/api/rivers/${river.id}/knowledge`, { signal: controller.signal })
       .then(response => {
         if (!response.ok) throw new Error(`Wikimedia service returned ${response.status}`);
         return response.json();
@@ -81,7 +82,7 @@ export default function RiverPanel({
     setPopulationContext(null);
     setPopulationLoading(true);
     setPopulationError(null);
-    fetch(`/api/rivers/${river.id}/population-context`, { signal: controller.signal })
+    apiFetch(`/api/rivers/${river.id}/population-context`, { signal: controller.signal })
       .then(async response => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || data.error || `Wikidata service returned ${response.status}`);

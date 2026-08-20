@@ -754,6 +754,12 @@ html, body, #root {
 
 .live-state { flex-direction: row; align-items: center; gap: 7px; color: #61ffac; font-size: 10px; font-weight: 800; }
 .live-state span, .system-btn-dot { width: 7px; height: 7px; border-radius: 50%; background: #35f58a; box-shadow: 0 0 9px #35f58a; }
+.live-state.starting, .live-state.loading { color: #65d9ff; }
+.live-state.starting span, .live-state.loading span { background: #20c9ff; box-shadow: 0 0 9px #20c9ff; }
+.live-state.degraded { color: #ffd75e; }
+.live-state.degraded span { background: #ffbe2d; box-shadow: 0 0 9px #ffbe2d; }
+.live-state.offline, .live-state.failed { color: #ff746c; }
+.live-state.offline span, .live-state.failed span { background: #ff3b30; box-shadow: 0 0 9px #ff3b30; }
 .hud-metric span { color: #6f9ab4; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
 .hud-metric strong { color: #dffaff; font-size: 15px; line-height: 1.15; }
 .hud-metric.alert strong { color: #ff665c; text-shadow: 0 0 10px rgba(255, 59, 48, 0.5); }

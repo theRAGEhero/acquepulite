@@ -6,12 +6,14 @@ import LayerControl from "./LayerControl.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import DataSourcesPanel from "./DataSourcesPanel.jsx";
 import { usePersistentState } from "./usePersistentState.js";
+import { apiFetch, fetchJson } from "./telemetry.js";
 
 export default function App() {
   const [rivers, setRivers] = useState(null);
   const [segments, setSegments] = useState(null);
   const [stations, setStations] = useState(null);
   const [dataSources, setDataSources] = useState(null);
+  const [systemHealth, setSystemHealth] = useState(null);
   const [selected, setSelected] = useState(null);
   const [selectedStation, setSelectedStation] = useState(null);
   const [drawer, setDrawer] = useState(null);
@@ -57,9 +59,9 @@ export default function App() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/rivers").then(response => response.json()),
-      fetch("/api/stations").then(response => response.json()),
-      fetch("/api/data-sources").then(response => response.json())
+      fetchJson("/api/rivers"),
+      fetchJson("/api/stations"),
+      fetchJson("/api/data-sources")
     ]).then(([riverData, stationData, sourceData]) => {
       setRivers(riverData); setStations(stationData); setDataSources(sourceData);
     }).catch(() => {
@@ -69,14 +71,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    const refreshHealth = () => fetchJson("/api/health")
+      .then(data => { if (active) setSystemHealth(data); })
+      .catch(error => {
+        if (active && error.name !== "AbortError") setSystemHealth({ status: "offline", ok: false, ready: false });
+      });
+    refreshHealth();
+    const interval = window.setInterval(refreshHealth, 60_000);
+    window.addEventListener("online", refreshHealth);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("online", refreshHealth);
+    };
+  }, []);
+
+  useEffect(() => {
     const url = paramFilter ? `/api/rivers-segments?param=${paramFilter}` : "/api/rivers-segments";
-    fetch(url).then(response => response.json()).then(setSegments)
+    fetchJson(url).then(setSegments)
       .catch(() => setSegments({ type: "FeatureCollection", features: [] }));
   }, [paramFilter]);
 
   useEffect(() => {
     if (!layers.eeaSites) return;
-    fetch("/api/eea/sites").then(response => response.json()).then(setEeaSites)
+    fetchJson("/api/eea/sites").then(setEeaSites)
       .catch(() => setEeaSites({ type: "FeatureCollection", features: [], available: false }));
   }, [layers.eeaSites]);
 
@@ -89,7 +108,7 @@ export default function App() {
     setRiverFacilitiesLoading(true);
 
     const endpoint = `/api/rivers/${selected.id}/nearby-facilities?radius=3000`;
-    const eeaRequest = fetch(`${endpoint}&source=eea`, { signal: controller.signal })
+    const eeaRequest = apiFetch(`${endpoint}&source=eea`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
         if (data && !fullResultDelivered) {
@@ -100,7 +119,7 @@ export default function App() {
       })
       .catch(() => null);
 
-    fetch(endpoint, { signal: controller.signal })
+    apiFetch(endpoint, { signal: controller.signal })
       .then(async response => {
         if (response.ok) return response.json();
         let detail = "";
@@ -210,7 +229,7 @@ export default function App() {
           <span>AcquePulite</span>
           <small>Official WFD geometry · live agency observations</small>
         </header>
-        <MonitoringHud metrics={metrics} updatedAt={dataSources?.updated_at} />
+        <MonitoringHud metrics={metrics} updatedAt={dataSources?.updated_at} health={systemHealth} />
 
         <LayerControl layers={layers} onToggleLayer={toggleLayer}
           paramFilter={paramFilter} onParamChange={setParamFilter}
@@ -253,10 +272,16 @@ export default function App() {
   );
 }
 
-function MonitoringHud({ metrics, updatedAt }) {
+function MonitoringHud({ metrics, updatedAt, health }) {
+  const state = health?.status || "starting";
+  const label = state === "ready" ? "LIVE" : state === "degraded" ? "DEGRADED" :
+    state === "offline" || state === "failed" ? "OFFLINE" : "STARTING";
+  const detail = health?.degraded_sources?.length
+    ? `Unavailable sources: ${health.degraded_sources.join(", ")}`
+    : `System status: ${state}`;
   return (
     <div className="monitoring-hud">
-      <div className="live-state"><span /> LIVE</div>
+      <div className={`live-state ${state}`} title={detail}><span /> {label}</div>
       <HudMetric label="Rivers" value={metrics.rivers} />
       <HudMetric label="Reaches" value={metrics.reaches} />
       <HudMetric label="Stations" value={metrics.stations} />

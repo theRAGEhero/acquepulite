@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchJson } from "./telemetry.js";
 
 const CATEGORY_ICONS = {
   industrial: "🏭",
@@ -27,22 +28,25 @@ export default function FacilitiesPanel({ station, onClose, onFacilityClick }) {
   const [eeaLoading, setEeaLoading] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setData(null);
     const url = `/api/stations/${station.id}/nearby-facilities?radius=${radius}`;
-    fetch(url)
-      .then(r => r.json())
+    fetchJson(url, { signal: controller.signal })
       .then(d => { setData(d); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
+      .catch(e => {
+        if (e.name === "AbortError") return;
+        setError(e.message); setLoading(false);
+      });
 
     // Also fetch EEA industrial sites nearby
     setEeaLoading(true);
     setEea(null);
-    fetch(`/api/stations/${station.id}/nearby-eea-sites?radius=${radius}`)
-      .then(r => r.json())
+    fetchJson(`/api/stations/${station.id}/nearby-eea-sites?radius=${radius}`, { signal: controller.signal })
       .then(d => { setEea(d); setEeaLoading(false); })
-      .catch(() => setEeaLoading(false));
+      .catch(error => { if (error.name !== "AbortError") setEeaLoading(false); });
+    return () => controller.abort();
   }, [station.id, radius]);
 
   const grouped = {};

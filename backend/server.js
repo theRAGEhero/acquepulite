@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { parameters } from "./data.js";
 import { loadArpaLombardia, summarizeStationMeasurements, PARAM_MAP } from "./arpaLombardia.js";
 import { loadArpatToscana } from "./arpatToscana.js";
@@ -21,26 +22,80 @@ import {
 } from "./hydrography.js";
 import { ARPA_REGIONS, MAJOR_ITALIAN_RIVERS, EEA_IED } from "./arpaRegistry.js";
 import { loadEeaData, hasEeaData, POLLUTANT_MAP } from "./eeaData.js";
-import { log } from "./logger.js";
+import { getLogStatus, getRecentLogs, log, serializeError } from "./logger.js";
 import { getNearbyPopulationContext, getRiverKnowledge } from "./wikimedia.js";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(cors({ exposedHeaders: ["X-Request-ID"] }));
+app.use(express.json({ limit: "128kb" }));
 
 const PORT = 4000;
 const PARAM_ITER = Object.values(PARAM_MAP);
 const riverFacilityCache = new Map();
 const RIVER_FACILITY_CACHE_MS = 30 * 60 * 1000;
+const runtime = {
+  phase: "starting",
+  boot_started_at: new Date().toISOString(),
+  boot_finished_at: null,
+  source_failures: []
+};
+const clientErrorRate = new Map();
+
+function markSourceFailure(source, error) {
+  runtime.source_failures.push({ source, message: error?.message || String(error) });
+}
+
+function acceptClientError(ip) {
+  const key = String(ip || "unknown");
+  const now = Date.now();
+  if (clientErrorRate.size > 1000) {
+    for (const [entryKey, entry] of clientErrorRate) {
+      if (now - entry.startedAt > 60_000) clientErrorRate.delete(entryKey);
+    }
+  }
+  const current = clientErrorRate.get(key);
+  if (!current || now - current.startedAt > 60_000) {
+    clientErrorRate.set(key, { startedAt: now, count: 1 });
+    return true;
+  }
+  current.count += 1;
+  return current.count <= 30;
+}
 
 // --- Request logger middleware ---
-app.use((req, _res, next) => {
-  const t0 = Date.now();
-  _res.on("finish", () => {
-    log.info("API", `${req.method} ${req.originalUrl} ${_res.statusCode} ${Date.now() - t0}ms`);
-  });
+app.use((req, res, next) => {
+  const incomingId = String(req.get("x-request-id") || "");
+  req.requestId = /^[A-Za-z0-9._-]{8,80}$/.test(incomingId) ? incomingId : randomUUID();
+  res.setHeader("X-Request-ID", req.requestId);
+  const startedAt = process.hrtime.bigint();
+  let recorded = false;
+  const record = event => {
+    if (recorded) return;
+    recorded = true;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const meta = {
+      request_id: req.requestId,
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration_ms: Number(durationMs.toFixed(1)),
+      response_bytes: Number(res.getHeader("content-length")) || null,
+      event
+    };
+    const message = `${req.method} ${req.path} ${res.statusCode}`;
+    if (res.statusCode >= 500) log.error("HTTP", message, meta);
+    else if (res.statusCode >= 400) log.warn("HTTP", message, meta);
+    else log.info("HTTP", message, meta);
+  };
+  res.once("finish", () => record("finish"));
+  res.once("close", () => record("connection_closed"));
   next();
 });
+
+const asyncRoute = handler => (req, res, next) => {
+  Promise.resolve(handler(req, res, next)).catch(next);
+};
 
 // In-memory store: only REAL data (no mock fallback).
 let store = {
@@ -75,6 +130,7 @@ async function initArpa() {
     for (const [sid, m] of data.measurementsByStation) arpaMeasurements.set(sid, m);
     log.info("ARPA", `Lombardia: ${data.rivers.length} rivers, ${data.stations.length} stations`);
   } catch (e) {
+    markSourceFailure("ARPA Lombardia", e);
     log.error("ARPA", `Lombardia failed: ${e.message}`);
   }
 
@@ -87,6 +143,7 @@ async function initArpa() {
     }
     log.info("ARPAT", `Toscana: ${toscana.reduce((sum, river) => sum + river.stretches.length, 0)} water bodies loaded`);
   } catch (e) {
+    markSourceFailure("ARPAT Toscana", e);
     log.error("ARPAT", `Toscana failed: ${e.message}`);
   }
 
@@ -98,6 +155,7 @@ async function initArpa() {
     for (const [sid, m] of emr.measurementsByStation) arpaMeasurements.set(sid, m);
     log.info("ARPAE", `Emilia-Romagna: ${emr.rivers.length} rivers, ${emr.stations.length} stations`);
   } catch (e) {
+    markSourceFailure("ARPAE Emilia-Romagna", e);
     log.error("ARPAE", `Emilia-Romagna failed: ${e.message}`);
   }
 
@@ -110,6 +168,7 @@ async function initArpa() {
     }
     log.info("ARPA-PIEMONTE", `Piemonte: ${piemonte.length} rivers`);
   } catch (e) {
+    markSourceFailure("ARPA Piemonte", e);
     log.error("ARPA-PIEMONTE", `Piemonte failed: ${e.message}`);
   }
 
@@ -122,6 +181,7 @@ async function initArpa() {
     }
     log.info("ARPA-VENETO", `Veneto: ${veneto.length} rivers`);
   } catch (e) {
+    markSourceFailure("ARPA Veneto", e);
     log.error("ARPA-VENETO", `Veneto failed: ${e.message}`);
   }
 
@@ -147,6 +207,7 @@ async function initArpa() {
       log.info("EEA", "No EEA dataset found — download from industry.eea.europa.eu and unzip into backend/data/eea/");
     }
   } catch (e) {
+    markSourceFailure("EEA Industrial Emissions", e);
     log.error("EEA", `Failed to load EEA data: ${e.message}`);
   }
 
@@ -292,11 +353,68 @@ async function initRiverGeometries() {
     const unmatched = store.rivers.filter(river => !river.geom).length;
     log.info("HYDRO", `${official} official, ${replaced} topology-safe OSM, ${unmatched} unmatched; no synthetic lines`);
   } catch (e) {
+    markSourceFailure("River geometry enrichment", e);
     log.warn("OSM", `Failed to fetch river geometries: ${e.message}`);
   }
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, arpa_fetched_at: store.arpaFetchedAt }));
+app.get("/api/health", (req, res) => {
+  const logging = getLogStatus();
+  const ready = runtime.phase === "ready" || runtime.phase === "degraded";
+  res.json({
+    ok: runtime.phase !== "failed",
+    ready,
+    status: runtime.phase,
+    request_id: req.requestId,
+    uptime_seconds: Math.round(process.uptime()),
+    boot_started_at: runtime.boot_started_at,
+    boot_finished_at: runtime.boot_finished_at,
+    data_updated_at: store.arpaFetchedAt,
+    data: {
+      rivers: store.rivers.length,
+      rivers_with_geometry: store.rivers.filter(river => river.geom).length,
+      stations: store.stations.length,
+      eea_sites: store.eea?.sites?.length || 0
+    },
+    degraded_sources: [...new Set(runtime.source_failures.map(item => item.source))],
+    logging: {
+      level: logging.level,
+      format: logging.format,
+      file_enabled: logging.file_enabled,
+      buffered_records: logging.buffered_records,
+      recent_warning_or_error_count: getRecentLogs({ minimumLevel: "warn", limit: 100 }).length
+    }
+  });
+});
+
+app.get("/api/ready", (req, res) => {
+  const ready = runtime.phase === "ready" || runtime.phase === "degraded";
+  res.status(ready ? 200 : 503).json({ ready, status: runtime.phase, request_id: req.requestId });
+});
+
+app.post("/api/client-errors", (req, res) => {
+  if (!acceptClientError(req.ip)) {
+    return res.status(429).json({ error: "Client error rate limit exceeded", request_id: req.requestId });
+  }
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const message = String(body.message || "Browser error").slice(0, 2000);
+  const severity = body.severity === "warning" ? "warn" : "error";
+  const meta = {
+    request_id: req.requestId,
+    kind: String(body.kind || "runtime").slice(0, 40),
+    page: String(body.page || "").slice(0, 500),
+    endpoint: String(body.endpoint || "").slice(0, 500),
+    http_status: Number(body.http_status) || null,
+    api_request_id: String(body.api_request_id || "").slice(0, 100) || null,
+    duration_ms: Number(body.duration_ms) || null,
+    online: body.online !== false,
+    viewport: body.viewport && typeof body.viewport === "object" ? body.viewport : null,
+    stack: String(body.stack || "").slice(0, 12000) || null,
+    component_stack: String(body.component_stack || "").slice(0, 8000) || null
+  };
+  log[severity]("CLIENT", message, meta);
+  res.status(202).json({ accepted: true, request_id: req.requestId });
+});
 
 app.get("/api/regions", (_req, res) => {
   const seen = new Set();
@@ -445,7 +563,7 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
 
 app.get("/api/parameters", (_req, res) => res.json(parameters));
 
-app.get("/api/rivers/:id/knowledge", async (req, res) => {
+app.get("/api/rivers/:id/knowledge", asyncRoute(async (req, res) => {
   const river = store.rivers.find(r => r.id === req.params.id);
   if (!river) return res.status(404).json({ error: "River not found" });
   try {
@@ -458,9 +576,9 @@ app.get("/api/rivers/:id/knowledge", async (req, res) => {
       candidates: [], facts: [], wikipedia: null
     });
   }
-});
+}));
 
-app.get("/api/rivers/:id/population-context", async (req, res) => {
+app.get("/api/rivers/:id/population-context", asyncRoute(async (req, res) => {
   const river = store.rivers.find(r => r.id === req.params.id);
   if (!river?.geom) return res.status(404).json({ error: "River geometry not found" });
   try {
@@ -473,7 +591,7 @@ app.get("/api/rivers/:id/population-context", async (req, res) => {
       detail: error.message
     });
   }
-});
+}));
 
 // --- Per-segment pollution coloring ----------------------------------------
 // Creates river segments between consecutive ARPA monitoring stations.
@@ -884,7 +1002,7 @@ app.get("/api/stations", (req, res) => {
 });
 
 // --- Nearby facilities endpoint ---
-app.get("/api/stations/:id/nearby-facilities", async (req, res) => {
+app.get("/api/stations/:id/nearby-facilities", asyncRoute(async (req, res) => {
   const station = store.stations.find(s => s.id === req.params.id);
   if (!station) return res.status(404).json({ error: "Station not found" });
   const radius = Math.min(10000, Math.max(500, Number(req.query.radius) || 3000));
@@ -904,9 +1022,9 @@ app.get("/api/stations/:id/nearby-facilities", async (req, res) => {
     log.error("API", `nearby-facilities failed for ${station.id}`, { error: e.message });
     res.status(502).json({ error: "Failed to query nearby facilities", detail: e.message });
   }
-});
+}));
 
-app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
+app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
   const river = store.rivers.find(item => item.id === req.params.id);
   if (!river?.geom) return res.status(404).json({ error: "River geometry not found" });
   const radius = Math.min(5000, Math.max(500, Number(req.query.radius) || 3000));
@@ -1028,7 +1146,7 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
     ttlMs: osmError || eeaError ? 2 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
   });
   res.json(value);
-});
+}));
 
 // --- Facilities categories (for frontend labels) ---
 app.get("/api/facility-categories", (_req, res) => {
@@ -1314,8 +1432,86 @@ app.get("/api/major-rivers", (_req, res) => {
   res.json(MAJOR_ITALIAN_RIVERS);
 });
 
-app.listen(PORT, async () => {
+app.use((req, res) => {
+  res.status(404).json({ error: "API route not found", request_id: req.requestId });
+});
+
+app.use((error, req, res, _next) => {
+  const invalidJson = error?.type === "entity.parse.failed";
+  const status = invalidJson ? 400 : Math.max(400, Math.min(599, Number(error?.status || error?.statusCode) || 500));
+  const severity = status >= 500 ? "error" : "warn";
+  log[severity]("API_ERROR", error?.message || "Unhandled API error", {
+    request_id: req.requestId,
+    method: req.method,
+    path: req.path,
+    status,
+    error: serializeError(error, status >= 500)
+  });
+  if (res.headersSent) return;
+  res.status(status).json({
+    error: invalidJson ? "Invalid JSON payload" : status >= 500 ? "Internal server error" : error.message,
+    request_id: req.requestId
+  });
+});
+
+let httpServer = null;
+let shuttingDown = false;
+
+function shutdown(signal, exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  runtime.phase = "stopping";
+  log.info("SERVER", `Graceful shutdown requested: ${signal}`, { signal, exit_code: exitCode });
+  const forceTimer = setTimeout(() => {
+    log.fatal("SERVER", "Graceful shutdown timed out", { signal });
+    process.exit(exitCode || 1);
+  }, 10_000);
+  forceTimer.unref();
+  if (!httpServer) {
+    clearTimeout(forceTimer);
+    process.exit(exitCode);
+    return;
+  }
+  httpServer.close(error => {
+    clearTimeout(forceTimer);
+    if (error) log.error("SERVER", "HTTP server close failed", { error: serializeError(error) });
+    else log.info("SERVER", "HTTP server stopped cleanly");
+    process.exit(error ? 1 : exitCode);
+  });
+}
+
+process.on("unhandledRejection", reason => {
+  runtime.phase = runtime.phase === "loading" ? "loading" : "degraded";
+  log.error("PROCESS", "Unhandled promise rejection", { error: serializeError(reason) });
+});
+process.on("uncaughtException", error => {
+  runtime.phase = "failed";
+  log.fatal("PROCESS", "Uncaught exception", { error: serializeError(error) });
+  shutdown("uncaughtException", 1);
+});
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));
+
+httpServer = app.listen(PORT, async () => {
+  runtime.phase = "loading";
   log.info("SERVER", `Backend API on http://localhost:${PORT}`);
-  log.info("SERVER", `Log level: ${process.env.LOG_LEVEL || "info"}`);
-  await initArpa();
+  log.info("SERVER", "Logging initialized", getLogStatus());
+  try {
+    await initArpa();
+    runtime.phase = runtime.source_failures.length ? "degraded" : "ready";
+    runtime.boot_finished_at = new Date().toISOString();
+    log.info("BOOT", `Initialization complete: ${runtime.phase}`, {
+      duration_ms: new Date(runtime.boot_finished_at) - new Date(runtime.boot_started_at),
+      degraded_sources: [...new Set(runtime.source_failures.map(item => item.source))]
+    });
+  } catch (error) {
+    runtime.phase = "failed";
+    runtime.boot_finished_at = new Date().toISOString();
+    log.fatal("BOOT", "Initialization failed", { error: serializeError(error) });
+  }
+});
+
+httpServer.on("error", error => {
+  runtime.phase = "failed";
+  log.fatal("SERVER", "HTTP server error", { error: serializeError(error) });
 });

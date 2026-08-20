@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
+import { fetchJson } from "./telemetry.js";
 
 export default function DataSourcesPanel() {
   const [data, setData] = useState(null);
   const [eea, setEea] = useState(null);
 
   useEffect(() => {
-    fetch("/api/data-sources")
-      .then(r => r.json())
+    const controller = new AbortController();
+    fetchJson("/api/data-sources", { signal: controller.signal })
       .then(setData)
-      .catch(() => setData(null));
-    fetch("/api/eea/status")
-      .then(r => r.json())
+      .catch(error => { if (error.name !== "AbortError") setData(null); });
+    fetchJson("/api/eea/status", { signal: controller.signal })
       .then(setEea)
-      .catch(() => setEea(null));
+      .catch(error => { if (error.name !== "AbortError") setEea(null); });
+    return () => controller.abort();
   }, []);
 
   if (!data) return <div className="loading">Loading data sources…</div>;

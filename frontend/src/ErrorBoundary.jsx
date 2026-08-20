@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { reportClientError } from "./telemetry.js";
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -12,6 +13,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("Map error boundary:", error, info);
+    reportClientError(error, { kind: "react-boundary", component_stack: info?.componentStack });
   }
 
   render() {
