@@ -1,4 +1,4 @@
-# Italian Rivers Pollution Map — Environmental Investigation Tool
+# AcquePulite — Environmental Investigation Tool
 
 Map-first technical dashboard for monitoring Italian rivers with pollution data
 from **real regional authorities** (ARPA/ARPAT). River reaches follow official

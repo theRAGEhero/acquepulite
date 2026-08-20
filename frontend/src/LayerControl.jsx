@@ -84,7 +84,7 @@ export default function LayerControl({
 
       {panel === "menu" && (
         <ControlPanel id="workspace-panel" className="workspace-panel" title="Workspace"
-          eyebrow="River Watch / Italy" onClose={() => setPanel(null)}>
+          eyebrow="AcquePulite / Italy" onClose={() => setPanel(null)}>
           <div className="control-status-grid">
             <ControlMetric label="Rivers" value={metrics?.rivers ?? "—"} />
             <ControlMetric label="Stations" value={metrics?.stations ?? "—"} />

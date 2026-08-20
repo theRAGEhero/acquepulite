@@ -164,8 +164,8 @@ export default function App() {
     <div className={`app ${neonMode ? "neon-mode" : ""} ${effectiveUiTheme === "light" ? "light-ui" : "dark-ui"}`}>
       <main className="map-wrap">
         <header className="title-card">
-          <span className="system-mark">RW//IT</span>
-          <span>River quality operations</span>
+          <span className="system-mark">AP//IT</span>
+          <span>AcquePulite</span>
           <small>Official WFD geometry · live agency observations</small>
         </header>
         <MonitoringHud metrics={metrics} updatedAt={dataSources?.updated_at} />
