@@ -79,6 +79,7 @@ export default function MapView3D({
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const activeBasemapRef = useRef(null);
   const refs = useRef({ handlers: [] });
   refs.current = {
     ...refs.current, rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels,
@@ -92,23 +93,37 @@ export default function MapView3D({
       style: STYLES[basemap] || STYLES.liberty,
       center: [11.0, 43.5], zoom: 5.5, pitch: flat ? 0 : 50, bearing: flat ? 0 : -20, antialias: true
     });
+    activeBasemapRef.current = basemap;
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl(), "bottom-left");
     mapRef.current = map;
-    map.on("load", () => rebuildMap(map));
+    const refreshOverlays = () => {
+      if (mapRef.current !== map) return;
+      rebuildMap(map);
+      map.triggerRepaint();
+    };
+    // setStyle removes application sources and layers. Rebuild every river
+    // overlay after each basemap style has fully loaded, including rapid
+    // changes made while the previous style is still loading.
+    map.on("style.load", refreshOverlays);
 
     return () => {
+      map.off("style.load", refreshOverlays);
       map.remove();
       mapRef.current = null;
+      activeBasemapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map || activeBasemapRef.current === basemap) return;
+    activeBasemapRef.current = basemap;
+    // This is safe even if the previous style is still loading. The
+    // persistent style.load listener above refreshes rivers with the latest
+    // React data as soon as the replacement basemap is ready.
     map.setStyle(STYLES[basemap] || STYLES.liberty);
-    map.once("style.load", () => rebuildMap(map));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap]);
 
