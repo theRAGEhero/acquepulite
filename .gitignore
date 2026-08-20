@@ -11,6 +11,7 @@ backend/logs/
 backend/data/**/*.csv
 backend/data/**/*.geojson
 backend/data/eea/
+!backend/data/regional/arpa-lazio-fiumi-2021-2023.csv
 
 # Local repository bootstrap helper
 backend/commitRepository.mjs

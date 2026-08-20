@@ -1,0 +1,111 @@
+Denominazione Corpo Idrico;Codice Europeo Corpo Idrico; Codice Regionale Stazione;Tipologia Corpo Idrico;Tipologia Monitoraggio;Stato/Potenziale Ecologico triennio 2021-2023;Stato Chimico triennio 2021-2023
+Canale Acque Medie/Rio Martino 1;IT12R12RMA_ACQUEMEDIE1_15AS6T;F2.73;Artificiale;Operativo;Scarso;Buono
+Canale Acque Medie/Rio Martino 2;IT12R12RMA_ACQUEMEDIE2_15SS2T;F2.14;Artificiale;Operativo;Scarso;Buono
+Canale Acque Medie/Rio Martino 3;IT12R12RMA_ACQUEMEDIE3_15SS3T;F2.15;Artificiale;Nucleo/Operativo;Scarso;Non Buono
+Canale Acque Alte/Moscarello 2;IT12R12MOS_ACQUEALTE2_15SS2T;F2.11;Naturale;Operativo;Scarso;Non Buono
+Canale Acque Alte/Moscarello 3;IT12R12MOS_ACQUEALTE3_15SS2T;F2.12;Naturale;Nucleo/Operativo;Cattivo;Non Buono
+Canale delle Acque Chiare 1;IT12R12FON-ITR_CHIARE1_15SR6T;F2.69 ;Naturale;Sorveglianza;Scarso;Non Buono
+Canale Linea Pio 1;IT12R12BAD_LINEAPIO1_15SS2T;F2.16;Artificiale;Operativo;Scarso;Buono
+Canale S. Susanna 1;IT12N010_SSUSANNA1_13SS2T;F3.55;Naturale;Operativo;Sufficiente;Buono
+Fiume Amaseno 1;IT12R12BAD_AMASENO1_15SR6T;F2.71;Naturale;Sorveglianza;Cattivo;n.d.
+Fiume Amaseno 2;IT12R12BAD_AMASENO2_15SS2T;F2.25;Fortemente Modificato;Operativo;Sufficiente;n.d.
+Fiume Amaseno 3;IT12R12BAD_AMASENO3_15SS3T;F2.07;Naturale;Nucleo/Operativo;Sufficiente;Non Buono
+Fiume Aniene 1;IT12N010_ANIENE1_13SR6T;F4.71;Naturale;Nucleo/Sorveglianza;Buono;Buono
+Fiume Aniene 2;IT12N010_ANIENE2_13SS2T;F4.72 ;Naturale;Sorveglianza;Buono;Buono
+Fiume Aniene 3;IT12N010_ANIENE3_13SS3T;F4.13;Naturale;Operativo;Buono;Buono
+Fiume Aniene 4;IT12N010_ANIENE4_13SS4T;F4.74;Fortemente Modificato;Operativo;Scarso;Buono
+Fiume Aniene 5;IT12N010_ANIENE5_14SS4F;F4.64;Fortemente Modificato;Nucleo/Operativo;Scarso;Non Buono
+Fiume Arrone 2;IT12R12ARS_FARRONE2_14SS3T;F4.24;Naturale;Operativo;Scarso;Non Buono
+Fiume Arrone 3;IT12R12ARS_FARRONE3_14SS3T;F4.23;Naturale;Nucleo/Operativo;Sufficiente;Non Buono
+Fiume Astura 2;IT12R12AST_ASTURA2_15SS2T;F2.29;Fortemente Modificato;Operativo;Scarso;Non Buono
+Fiume Cavata 1;IT12R12BAD_CAVATA1_15SS2T;F2.02;Naturale;Operativo;Scarso;Buono
+Fiume Cosa 2;IT12N005_FCOSA2_13SS2T;F1.80;Naturale;Operativo;Cattivo;Buono
+Fiume Cosa 3;IT12N005_FCOSA3_13SS3T;F1.75;Fortemente Modificato;Operativo;Scarso;Buono
+Fiume Fibreno 1;IT12N005_FIBRENO1_13AS6T;F1.71 ;Naturale;Sorveglianza;Buono;Buono
+Fiume Fibreno 2;IT12N005_FIBRENO2_13SS2T;F1.13;Fortemente Modificato;Operativo;Buono;Non Buono
+Fiume Fiora 1;IT12I014_FIORA1_14SS3T;F5.03;Naturale;Operativo;Buono;Buono
+Fiume Fiora 2;IT12I014_FIORA2_11SS4F;F5.05;Naturale;Nucleo/Operativo;Sufficiente;Non Buono
+Fiume Gari 1;IT12N005_GARI1_13SR6T;F1.72;Naturale;Operativo;Buono;Non Buono
+Fiume Liri-Garigliano 1;IT12N005_LIRI_GARIGLIANO1_13SS3T;F1.35;Naturale;Operativo;Sufficiente;Buono
+Fiume Liri-Garigliano 2;IT12N005_LIRI_GARIGLIANO2_13SS4T;F1.73;Naturale;Operativo;Sufficiente;Buono
+Fiume Liri-Garigliano 3;IT12N005_LIRI_GARIGLIANO3_13SS4T;F1.08;Fortemente Modificato;Nucleo/Operativo;Scarso;Non Buono
+Fiume Liri-Garigliano 4;IT12N005_LIRI_GARIGLIANO4_13SS4T;F1.09;Fortemente Modificato;Operativo;Sufficiente;Buono
+Fiume Liri-Garigliano 6;IT12N005_LIRI_GARIGLIANO6_15SS5T;F2.76;Naturale;Nucleo/Operativo;Sufficiente;Buono
+Fiume Marta 1;IT12R12MAR_MARTA1_14GL1T;F5.36;Naturale;Operativo;Scarso;Buono
+Fiume Marta 2;IT12R12MAR_MARTA2_14SS3T;F5.11;Naturale;Operativo;Sufficiente;Non Buono
+Fiume Marta 3;IT12R12MAR_MARTA3_14SS3T;F5.14;Naturale;Nucleo/Operativo;Sufficiente;Non Buono
+Fiume Melfa 2;IT12N005_MELFA2_13SS2T;F1.76;Fortemente Modificato;Sorveglianza;Sufficiente;n.d.
+Fiume Melfa 3;IT12N005_MELFA3_13SS3T;F1.77;Fortemente Modificato;Nucleo/Sorveglianza;Scarso;Buono
+Fiume Mignone 1;IT12R12MIG_MIGNONE1_14SS1T;F5.72;Naturale;Operativo;Sufficiente;Buono
+Fiume Mignone 2;IT12R12MIG_MIGNONE2_14SS2T;F4.21;Naturale;Operativo;Sufficiente;Buono
+Fiume Mignone 3;IT12R12MIG_MIGNONE3_14SS3T;F5.37;Naturale;Nucleo/Operativo;Buono;Non Buono
+Fiume Ninfa Sisto 1;IT12R12RMA_NINFASISTO1_15AS6T;F2.34;Naturale;Operativo;Sufficiente;Buono
+Fiume Ninfa Sisto 2;IT12R12RMA_NINFASISTO2_15SS2T;F2.35;Fortemente Modificato;Operativo;Cattivo;Buono
+Fiume Ninfa Sisto 3;IT12R12RMA_NINFASISTO3_15SS3T;F2.37;Fortemente Modificato;Nucleo/Operativo;Cattivo;Non Buono
+Fiume Olpeta 2;IT12I014_OLPETA2_14SS3D;F5.73;Naturale;Operativo;Sufficiente;Non Buono
+Fiume Paglia 2;IT12N010_PAGLIA2_11SS3T;F5.22;Naturale;Nucleo/Operativo;Sufficiente;Buono
+Fiume Rapido 2;IT12N005_RAPIDO2_13SS3T;F1.18;Fortemente Modificato;Operativo;Buono;Buono
+Fiume Sacco 1;IT12N005_SACCO1_14SS1T;F4.75;Naturale;Operativo;Sufficiente;Buono
+Fiume Sacco 2;IT12N005_SACCO2_14SS2T;F4.15;Naturale;Operativo;Scarso;Buono
+Fiume Sacco 3;IT12N005_SACCO3_15SS3D;F4.76;Naturale;Operativo;Cattivo;Non Buono
+Fiume Sacco 4;IT12N005_SACCO4_13SS3T;F1.69;Naturale;Operativo;Scarso;Non Buono
+Fiume Sacco 5;IT12N005_SACCO5_13SS4T;F1.68;Naturale;Nucleo/Operativo;Scarso;Non Buono
+Fiume Salto 1;IT12N010_SALTO1_13SS3T;F3.50;Naturale;Operativo;Buono;Buono
+Fiume Salto 2;IT12N010_SALTO2_13SS3T;F3.15;Naturale;Sorveglianza;Buono;Buono
+Fiume Tevere 2;IT12N010_TEVERE2_11SS5T;F3.76 - F5.27;Fortemente Modificato;Operativo;Sufficiente;Buono
+Fiume Tevere 3;IT12N010_TEVERE3_14SS5D;F4.08;Fortemente Modificato;Operativo;Scarso;Buono
+Fiume Tevere 4;IT12N010_TEVERE4_14SS5D;F4.63;Fortemente Modificato;Operativo;Scarso;Buono
+Fiume Tevere 5;IT12N010_TEVERE5_14SS5D;F4.06 - F4.62;Fortemente Modificato;Operativo;Scarso;Non Buono
+Fiume Turano 3;IT12N010_TURANO3_13SS3T;F3.20;Naturale;Operativo;Buono;Buono
+Fiume Ufente 1;IT12R12BAD_UFENTE1_15AS6T;F2.70;Naturale;Operativo;Sufficiente;Buono
+Fiume Ufente 2;IT12R12BAD_UFENTE2_15SS2T;F2.05;Fortemente Modificato;Operativo;Scarso;Buono
+Fiume Velino 1;IT12N010_VELINO1_13SR6T;F3.61;Naturale;Operativo;Buono;Buono
+Fiume Velino 3;IT12N010_VELINO3_13SS3T;F3.62;Naturale;Operativo;Buono;Buono
+Fiume Velino 4;IT12N010_VELINO4_13SS4T;F3.48;Fortemente Modificato;Nucleo/Operativo;Scarso;Buono
+Fosso Bagnatore 1;IT12N010_BAGNAT1_13SS2T;F4.82;Naturale;Sorveglianza;Buono;n.d.
+Fosso Corese 1;IT12N010_CORESE1_13IN7T;F3.77;Naturale;Sorveglianza;Buono;Buono
+Fosso Corese 2;IT12N010_CORESE2_13SS2T;F3.78;Naturale;Sorveglianza;Buono;Buono
+Fosso Corese 3;IT12N010_CORESE3_14SS3F;F4.17;Naturale;Operativo;Scarso;Buono
+Fosso della Torraccia 2;IT12N010_TORRAC2_14SS2T;F4.83;Naturale;Operativo;Scarso;Buono
+Fosso delle Cadute 2;IT12R12MIG-ARS_CADUTE2_14SS2T;F4.69;Naturale;Sorveglianza;Scarso;Buono
+Fosso dell'Osa 1;IT12N010_DELLOSA1_14SS2T;F4.84;Fortemente Modificato;Operativo;Sufficiente;Buono
+Fosso di Leprignano 2;IT12N010_LEPRIG2_14SS2T;F4.86;Naturale;Operativo;Scarso;Buono
+Fosso di Rustica 2;IT12N010_RUSTICA2_14SS2T;F5.75;Naturale;Operativo;Scarso;Buono
+Fosso Galeria 1;IT12N010_GALERIA1_14SS1T;F4.79;Naturale;Operativo;Scarso;Buono
+Fosso Galeria 2;IT12N010_GALERIA2_14SS3T;F4.18;Fortemente Modificato;Nucleo/Operativo;Cattivo;Non Buono
+Fosso Incastri (Rio Grande) 2;IT12R12INC_INCASTRI2_14SS2T;F4.25;Naturale;Operativo;Scarso;Buono
+Fosso Lenta 2;IT12R12MIG_LENTA2_14SS2T;F4.89;Naturale;Operativo;Scarso;Buono
+Fosso Malafede 1;IT12N010_MALAFEDE1_14SS1T;F4.80;Naturale;Operativo;Cattivo;Non Buono
+Fosso Passerano 2;IT12N010_PASSERANO2_14SS2T;F4.90;Naturale;Operativo;Sufficiente;Buono
+Fosso Rio Filetto 2;IT12N010_RIOFILETTO2_14SS2T;F5.76;Naturale;Operativo;Sufficiente;Buono
+Fosso Sanguinara 1;IT12R12MIG-ARS_SANGUIN1_14IN7T;F4.65;Naturale;Operativo;Sufficiente;Buono
+Fosso Savo (Centogocce) 2;IT12N005_SAVO2_14SS2T;F4.16;Naturale;Operativo;Cattivo;Buono
+Fosso Spaccasassi 2;IT12R12MOS_SPACCAS2_14SS2T;F2.72;Naturale;Operativo;Scarso;Non Buono
+Fosso Spaccasassi 3;IT12R12MOS_SPACCAS3_15SS2F;F2.10;Artificiale;Operativo;Sufficiente;Non Buono
+Fosso Tre Denari 2;IT12R12MIG-ARS_TREDENARI2_14SS2T;F4.31;Fortemente Modificato;Operativo;Scarso;Buono
+Fosso Vaccina 2;IT12R12MIG-ARS_VACCINA2_14SS2T;F4.22;Fortemente Modificato;Operativo;Scarso;Buono
+Fosso Verginese 2;IT12R12MIG_VERGINESE2_14SS2T;F4.92;Naturale;Operativo;Buono;Buono
+Rio Fiume 1;IT12R12MIG-ARS_RIOFIUME1_14IN7T;F4.66;Naturale;Operativo;Sufficiente;Buono
+Rio Torto 1;IT12N010_RIOTORTO1_14IN7T;F4.67;Naturale;Operativo;in secca;in secca
+Rio Torto 2;IT12N010_RIOTORTO2_14SS2T;F4.93;Fortemente Modificato;Operativo;Sufficiente;Buono
+Rio Valchetta (Cremera) 2;IT12N010_VALCHETTA2_14SS2T;F4.95;Naturale;Operativo;Scarso;Buono
+Rio Valchetta (Cremera) 3;IT12N010_VALCHETTA3_14SS3T;F4.96;Fortemente Modificato;Operativo;Scarso;Buono
+Rio Vicano 1;IT12N010_RIOVICANO1_14SS1T;F5.77;Naturale;Operativo;Cattivo;Non Buono
+Rio Vicano 2;IT12N010_RIOVICANO2_14SS2T;F5.78;Naturale;Operativo;Sufficiente;Non Buono
+Torrente Alabro 1;IT12N005_ALABRO1_13SS1T;F1.74;Fortemente Modificato;Operativo;Sufficiente;Buono
+Torrente Alabro 2;IT12N005_ALABRO2_13SS2T;F1.36;Fortemente Modificato;Operativo;Scarso;Buono
+Torrente Capofiume 2;IT12N005_TCAPOFIUME2_13SS2T;F1.37;Naturale;Nucleo/Sorveglianza;Buono;Buono
+Torrente Arrone 1;IT12R12ARN_TARRONE1_14SS1T;F5.70;Naturale;Operativo;Sufficiente;Buono
+Torrente Arrone 2;IT12R12ARN_TARRONE2_14SS2T;F5.08;Naturale;Operativo;Sufficiente;Buono
+Torrente Ausente 2;IT12N005_AUSENTE2_15SS2T;F2.81;Fortemente Modificato;Operativo;Sufficiente;Buono
+Torrente Biedano 2;IT12R12MAR_BIEDANO2_14SS2T;F5.79;Naturale;Operativo;Scarso;Buono
+Torrente Farfa 1;IT12N010_FARFA1_13SR6T;F3.73;Naturale;Sorveglianza;Buono;Buono
+Torrente Farfa 2;IT12N010_FARFA2_13SS2T;F3.74;Naturale;Sorveglianza;Buono;Buono
+Torrente Farfa 4;IT12N010_FARFA4_14SS3F;F3.53 ;Naturale;Sorveglianza;Sufficiente;Buono
+Torrente Stridolone 1;IT12N010_STRID1_11SS2T;F5.80;Naturale;Operativo;Buono;Buono
+Torrente Traponzo 2;IT12R12MAR_TRAPONZO2_14SS2T;F5.81;Naturale;Operativo;Sufficiente;Buono
+Torrente Treja 1;IT12N010_TREJA1_14SS2T;F4.99;Naturale;Operativo;Sufficiente;Non Buono
+Torrente Treja 2;IT12N010_TREJA2_14SS3T;F5.82;Naturale;Operativo;Sufficiente;Non Buono
+Torrente Vesca 2;IT12R12MIG_VESCA2_14IN7T;F5.83;Naturale;Operativo;Elevato;Buono
+Torrente Fiumicino 1;IT12N010_FIUMICINO1_13IN7T;F4.68;Naturale;Sorveglianza;Buono;Buono
+Torrente Simbrivio 2;IT12N010_SIMBRIVIO2_13SS2T;F4.98 ;Naturale;Sorveglianza;Elevato;n.d.
