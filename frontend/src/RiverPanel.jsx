@@ -27,28 +27,50 @@ export default function RiverPanel({
 }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState(null);
+  const [summaryAttempt, setSummaryAttempt] = useState(0);
   const [facilitiesStation, setFacilitiesStation] = useState(null);
   const [knowledge, setKnowledge] = useState(null);
   const [knowledgeLoading, setKnowledgeLoading] = useState(true);
+  const [knowledgeError, setKnowledgeError] = useState(null);
+  const [knowledgeAttempt, setKnowledgeAttempt] = useState(0);
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setSummary(null);
+    setSummaryError(null);
     setFacilitiesStation(null);
-    fetch(`/api/rivers/${river.id}/pollution-summary`)
-      .then(r => r.json())
+    fetch(`/api/rivers/${river.id}/pollution-summary`, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`Agency service returned ${response.status}`);
+        return response.json();
+      })
       .then(d => { setSummary(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [river.id]);
+      .catch(error => {
+        if (error.name === "AbortError") return;
+        setSummaryError(error.message); setLoading(false);
+      });
+    return () => controller.abort();
+  }, [river.id, summaryAttempt]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setKnowledge(null);
     setKnowledgeLoading(true);
-    fetch(`/api/rivers/${river.id}/knowledge`)
-      .then(response => response.json())
+    setKnowledgeError(null);
+    fetch(`/api/rivers/${river.id}/knowledge`, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`Wikimedia service returned ${response.status}`);
+        return response.json();
+      })
       .then(data => { setKnowledge(data); setKnowledgeLoading(false); })
-      .catch(() => setKnowledgeLoading(false));
-  }, [river.id]);
+      .catch(error => {
+        if (error.name === "AbortError") return;
+        setKnowledgeError(error.message); setKnowledgeLoading(false);
+      });
+    return () => controller.abort();
+  }, [river.id, knowledgeAttempt]);
 
   const handleStationClick = (s) => {
     onStationClick(s.lat, s.lon);
@@ -81,12 +103,17 @@ export default function RiverPanel({
         </div>
       )}
 
-      <KnowledgeCard data={knowledge} loading={knowledgeLoading} />
+      <KnowledgeCard data={knowledge} loading={knowledgeLoading} error={knowledgeError}
+        riverName={river.name} onRetry={() => setKnowledgeAttempt(value => value + 1)} />
 
       <RiverCompanies data={facilities} loading={facilitiesLoading} error={facilitiesError}
         onCompanyClick={onStationClick} />
 
       {loading && <div className="loading">Loading pollution data…</div>}
+      {summaryError && <div className="service-state error">
+        <strong>Agency data could not be loaded</strong><span>{summaryError}</span>
+        <button onClick={() => setSummaryAttempt(value => value + 1)}>Retry</button>
+      </div>}
 
       {!loading && summary && !isArpa && !isArpae && !isStatusAssessment && (
         <div className="empty" style={{ marginTop: 30 }}>
@@ -282,14 +309,15 @@ function RiverCompanies({ data, loading, error, onCompanyClick }) {
       <div className="facility-method">
         Corridor distance is calculated against the actual river line. Click a company to locate it on the map.
       </div>
-      {loading && <div className="loading">Scanning OpenStreetMap and the installed EEA registry…</div>}
+      {loading && !data && <div className="loading">Checking the indexed EEA industrial registry…</div>}
+      {loading && data && <div className="facility-progress"><span /> EEA results ready · checking OpenStreetMap…</div>}
       {error && <div className="facility-warning">Facility scan failed: {error}</div>}
       {data?.warning && <div className="facility-warning">{data.warning}</div>}
-      {data && data.count === 0 && <div className="loading">No mapped companies found in this corridor.</div>}
+      {data && data.count === 0 && !loading && <div className="loading">No mapped companies found in this corridor.</div>}
       {data && data.count > 0 && (
         <>
           <div className="facility-toolbar">
-            <span>OSM {data.osm_count} · EEA {data.eea_count}</span>
+            <span>OSM {data.osm_count} · EEA {data.eea_count} · {data.query_duration_ms ?? "—"} ms</span>
             <select value={category} onChange={event => { setCategory(event.target.value); setShowAll(false); }}>
               <option value="all">All categories</option>
               {categories.map(value => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
@@ -317,15 +345,31 @@ function RiverCompanies({ data, loading, error, onCompanyClick }) {
               {showAll ? "Show first 16" : `Show all ${filtered.length}`}
             </button>
           )}
-          <div className="facility-attribution">OpenStreetMap coverage depends on contributed tags. EEA entries appear when the bulk Industrial Emissions dataset is installed.</div>
+          <div className="facility-attribution">
+            Sources: {(data.sources || []).map((source, index) => <span key={source.url}>
+              {index > 0 && " · "}<a href={source.url} target="_blank" rel="noreferrer">{source.name}</a>
+            </span>)}. OpenStreetMap coverage depends on contributed tags.
+            {data.eea_candidates_scanned != null && <> Indexed EEA candidates checked: {data.eea_candidates_scanned}.</>}
+          </div>
         </>
       )}
     </section>
   );
 }
 
-function KnowledgeCard({ data, loading }) {
+function KnowledgeCard({ data, loading, error, riverName, onRetry }) {
   if (loading) return <div className="knowledge-card loading">Resolving Wikidata identity…</div>;
+  if (error) return (
+    <div className="knowledge-card unresolved service-state error">
+      <div className="knowledge-kicker">Wikimedia service unavailable</div>
+      <p>{error}</p>
+      <div className="service-actions">
+        <button onClick={onRetry}>Retry</button>
+        <a href={`https://www.wikidata.org/w/index.php?search=${encodeURIComponent(riverName)}`}
+          target="_blank" rel="noreferrer">Search Wikidata ↗</a>
+      </div>
+    </div>
+  );
   if (!data?.available) {
     return (
       <div className="knowledge-card unresolved">
@@ -372,6 +416,7 @@ function KnowledgeCard({ data, loading }) {
         </div>
         <div className="incident-section">
           <div className="knowledge-kicker">Environmental incidents linked through Wikidata</div>
+          <p className="incident-method">Checks structured relationships in both directions, then applies conservative multilingual incident matching.</p>
           {data.environmental_incidents?.length ? data.environmental_incidents.map(incident => (
             <article className="incident-row" key={incident.id}>
               <div>
@@ -379,6 +424,9 @@ function KnowledgeCard({ data, loading }) {
                 <span>{incident.date || "Date not structured"} · {incident.confidence} confidence</span>
                 <p>{incident.description || incident.relation}</p>
                 <small>{incident.relation}</small>
+                {incident.evidence?.length > 0 && <div className="incident-evidence">
+                  {incident.evidence.map(value => <span key={value}>{value}</span>)}
+                </div>}
               </div>
               <div className="incident-links">
                 {incident.wikipedia && <a href={incident.wikipedia.url} target="_blank" rel="noreferrer">Wikipedia ↗</a>}

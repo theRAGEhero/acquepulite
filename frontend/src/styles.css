@@ -887,13 +887,22 @@ html, body, #root {
 .status-component p { color: #87a2ae; font-size: 9px; line-height: 1.4; margin-top: 4px; }
 .record-source { font-size: 9px; margin-top: 6px; }
 .incident-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(32, 201, 255, 0.16); }
+.incident-method { margin: 2px 0 7px; color: #668b9c !important; font-size: 9px !important; }
 .incident-row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid rgba(86, 148, 176, 0.12); }
 .incident-row strong { display: block; color: #edfaff; font-size: 12px; }
 .incident-row span, .incident-row small { display: block; color: #6f95a8; font-size: 9px; margin-top: 2px; }
 .incident-row p { margin-top: 4px; }
 .incident-links { display: flex; flex-direction: column; gap: 4px; min-width: 74px; }
 .incident-links a { color: #45d4ff; font-size: 9px; text-decoration: none; }
+.incident-evidence { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.incident-evidence span { padding: 3px 5px; color: #8ddbf2; background: rgba(32, 201, 255, .07); border: 1px solid rgba(32, 201, 255, .16); border-radius: 4px; font-size: 7px; text-transform: uppercase; }
 .no-incidents { color: #7896a3 !important; font-size: 10px !important; }
+.service-state.error { padding: 12px; color: #ffc2bd; background: rgba(255, 59, 48, .08); border: 1px solid rgba(255, 59, 48, .22); border-radius: 8px; }
+.service-state.error strong, .service-state.error span { display: block; }
+.service-state.error strong { font-size: 12px; }
+.service-state.error span { margin-top: 3px; color: #b98d8a; font-size: 9px; }
+.service-state.error button, .service-actions a { display: inline-block; margin-top: 8px; padding: 5px 8px; color: #9de8ff; background: rgba(32, 201, 255, .08); border: 1px solid rgba(32, 201, 255, .22); border-radius: 5px; font-size: 9px; text-decoration: none; cursor: pointer; }
+.service-actions { display: flex; gap: 6px; }
 
 .river-companies { margin: 8px 0 20px; }
 .facility-method, .facility-attribution {
@@ -911,6 +920,24 @@ html, body, #root {
   font-size: 11px;
   margin-bottom: 8px;
 }
+.facility-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 7px 0 9px;
+  color: #79cce8;
+  font: 9px "SFMono-Regular", Consolas, monospace;
+  text-transform: uppercase;
+}
+.facility-progress span {
+  width: 7px;
+  height: 7px;
+  background: #2dd4ff;
+  border-radius: 50%;
+  box-shadow: 0 0 9px #2dd4ff;
+  animation: facility-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes facility-pulse { to { opacity: .35; } }
 .facility-toolbar {
   display: flex;
   align-items: center;
@@ -969,6 +996,8 @@ html, body, #root {
   font-size: 10px;
 }
 .facility-attribution { margin: 8px 0 0; }
+.facility-attribution a { color: #45d4ff; text-decoration: none; }
+.facility-attribution a:hover { text-decoration: underline; }
 
 .maplibregl-ctrl-top-right { top: 112px; right: 5px; }
 

@@ -17,6 +17,12 @@ instead of asserted facts.
 - **Layers:** manage hydrography, quality reaches, labels, stations, river-corridor companies, EEA sites, and terrain directly on the map.
 - **Filters:** choose the pollutant used for reach coloring and toggle visible severity classes. The compact quality legend opens the same filter panel.
 
+River-company results are delivered in two stages: the locally indexed EEA
+registry is shown immediately, then a time-bounded OpenStreetMap corridor query
+adds community-mapped facilities. EEA candidates are selected with a spatial
+grid before exact distance-to-river calculation, rather than scanning the full
+registry on every click.
+
 ## Data sources (all real, no sample data)
 
 | Source | Region | Data | Access |
@@ -98,7 +104,9 @@ npm run dev        # http://localhost:5173
 - No mock/sample data anywhere: rivers without real agency data are not shown.
 - Layer toggles, pollutant filter, basemap, and 2D/3D view persist in localStorage.
 - Environmental incidents are shown only when a conservative Wikidata match is
-  found. “Not found in Wikidata” never means that no incident occurred.
+  found. Structured river/event properties are checked in both directions and
+  every accepted result includes its matching evidence. “Not found in Wikidata”
+  never means that no incident occurred.
 - Attribution: ARPA Lombardia (CC0), ARPAT/ARPAE/ARPAV (CC BY where specified),
   ARPA Piemonte service terms, WISE/EEA re-use terms, OpenStreetMap (ODbL),
   Wikidata (CC0), and Wikipedia (CC BY-SA).

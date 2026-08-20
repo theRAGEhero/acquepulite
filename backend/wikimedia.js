@@ -6,6 +6,10 @@ const WATER_WORDS = /\b(fiume|torrente|rio|river|stream|watercourse|canale|canal
 const ITALY_WORDS = /\b(italia|italy|italian[oa]?|lombardia|toscana|emilia|romagna|veneto|piemonte|liguria|lazio|umbria|marche|abruzzo|molise|campania|puglia|basilicata|calabria|sicilia|sardegna|trentino|alto adige|friuli|valle d.aosta)\b/i;
 const WATER_TYPES = new Set(["Q4022", "Q355304", "Q47521", "Q12284", "Q55659167"]);
 const INCIDENT_WORDS = /\b(disastro|catastrofe|incidente|inquinamento|contaminazione|sversamento|alluvione|disaster|pollution|contamination|spill|flood)\b/i;
+const INCIDENT_RELATIONS = {
+  P276: "location", P361: "part of", P921: "main subject",
+  P793: "significant event", P206: "located on physical feature"
+};
 
 const FACT_PROPERTIES = {
   P2043: { label: "Length", kind: "quantity" },
@@ -186,13 +190,6 @@ async function getWikipedia(entity) {
   }
 }
 
-function claimReferencesEntity(entity, targetId) {
-  return Object.values(entity.claims || {}).some(claims => claims.some(claim => {
-    const value = claim?.mainsnak?.datavalue?.value;
-    return value?.id === targetId;
-  }));
-}
-
 function claimDate(entity) {
   for (const property of ["P585", "P580", "P571"]) {
     const time = rawClaim(entity, property)?.time;
@@ -201,47 +198,94 @@ function claimDate(entity) {
   return null;
 }
 
-async function directlyLinkedItemIds(riverId) {
-  const query = `SELECT DISTINCT ?item WHERE {
-    VALUES ?relation { wdt:P276 wdt:P361 wdt:P921 wdt:P793 }
-    ?item ?relation wd:${riverId} .
+async function directlyLinkedItems(riverId) {
+  const query = `SELECT DISTINCT ?item ?property ?direction WHERE {
+    VALUES ?property { wdt:P276 wdt:P361 wdt:P921 wdt:P793 wdt:P206 }
+    {
+      ?item ?property wd:${riverId} .
+      BIND("item_to_river" AS ?direction)
+    } UNION {
+      wd:${riverId} ?property ?item .
+      BIND("river_to_item" AS ?direction)
+    }
     FILTER(?item != wd:${riverId})
   } LIMIT 50`;
   const params = new URLSearchParams({ query, format: "json" });
   const data = await fetchJson(`https://query.wikidata.org/sparql?${params}`);
-  return (data.results?.bindings || []).map(binding => binding.item?.value?.split("/").pop()).filter(Boolean);
+  const linked = new Map();
+  for (const binding of data.results?.bindings || []) {
+    const id = binding.item?.value?.split("/").pop();
+    const property = binding.property?.value?.split("/").pop();
+    if (!id || !property) continue;
+    if (!linked.has(id)) linked.set(id, []);
+    linked.get(id).push({ property, direction: binding.direction?.value || "item_to_river" });
+  }
+  return linked;
+}
+
+function incidentRelationText(relations) {
+  const strongest = relations.find(item => item.property === "P793") || relations[0];
+  if (!strongest) return "River named in the Wikidata label or description";
+  if (strongest.property === "P793" && strongest.direction === "river_to_item") {
+    return "Listed by Wikidata as a significant event of this river";
+  }
+  const label = INCIDENT_RELATIONS[strongest.property] || strongest.property;
+  return strongest.direction === "item_to_river"
+    ? `Wikidata ${label} relationship points to this river`
+    : `This river's Wikidata ${label} relationship points to the event`;
+}
+
+export function scoreIncidentCandidate(river, entity, directRelations = []) {
+  const label = bestText(entity, "labels") || entity.id;
+  const description = bestText(entity, "descriptions") || "";
+  const normalizedText = normalizeName(`${label} ${description}`);
+  const riverName = normalizeName(river.name);
+  const riverNamed = Boolean(riverName && normalizedText.includes(riverName));
+  const incidentLanguage = INCIDENT_WORDS.test(`${label} ${description}`);
+  const environmentalClass = claimEntityIds(entity, "P31").includes("Q3193890");
+  const significantEvent = directRelations.some(relation => relation.property === "P793");
+  const direct = directRelations.length > 0;
+  const incidentEvidence = incidentLanguage || environmentalClass || significantEvent;
+  let score = direct ? 55 : 0;
+  if (riverNamed) score += 30;
+  if (incidentLanguage) score += 35;
+  if (environmentalClass) score += 50;
+  if (significantEvent) score += 25;
+  if (entity.sitelinks?.itwiki || entity.sitelinks?.enwiki) score += 5;
+  return {
+    entity, score, direct, label, description, incidentEvidence,
+    relation: incidentRelationText(directRelations),
+    evidence: [
+      direct && "Structured river relationship",
+      significantEvent && "Significant-event property",
+      environmentalClass && "Environmental-disaster class",
+      riverNamed && "River named in item",
+      incidentLanguage && "Incident terminology"
+    ].filter(Boolean)
+  };
 }
 
 async function getEnvironmentalIncidents(river, riverEntity) {
-  let directIds = [];
-  try { directIds = await directlyLinkedItemIds(riverEntity.id); } catch { /* WDQS is optional */ }
+  let directLinks = new Map();
+  try { directLinks = await directlyLinkedItems(riverEntity.id); } catch { /* WDQS is optional */ }
   const searches = await Promise.allSettled([
     searchIds(`${river.name} inquinamento`, "it"),
     searchIds(`${river.name} disastro`, "it"),
+    searchIds(`${river.name} sversamento`, "it"),
     searchIds(`${river.name} pollution`, "en")
   ]);
   const searchedIds = searches.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  const ids = [...new Set([...directIds, ...searchedIds])].filter(id => id !== riverEntity.id).slice(0, 50);
+  const ids = [...new Set([...directLinks.keys(), ...searchedIds])].filter(id => id !== riverEntity.id).slice(0, 50);
   const entities = await getEntities(ids);
-  const directSet = new Set(directIds);
-  const riverName = normalizeName(river.name);
-  const ranked = Object.values(entities).map(entity => {
-    const label = bestText(entity, "labels") || entity.id;
-    const description = bestText(entity, "descriptions") || "";
-    const text = `${label} ${description}`;
-    const direct = directSet.has(entity.id) || claimReferencesEntity(entity, riverEntity.id);
-    let score = direct ? 60 : 0;
-    if (normalizeName(text).includes(riverName)) score += 35;
-    if (INCIDENT_WORDS.test(text)) score += 35;
-    if (claimEntityIds(entity, "P31").includes("Q3193890")) score += 45;
-    if (entity.sitelinks?.itwiki || entity.sitelinks?.enwiki) score += 5;
-    return { entity, score, direct, label, description };
-  }).filter(item => item.score >= 70).sort((a, b) => b.score - a.score).slice(0, 6);
+  const ranked = Object.values(entities)
+    .map(entity => scoreIncidentCandidate(river, entity, directLinks.get(entity.id) || []))
+    .filter(item => item.incidentEvidence && item.score >= 70)
+    .sort((a, b) => b.score - a.score).slice(0, 6);
 
   return Promise.all(ranked.map(async item => ({
     id: item.entity.id, label: item.label, description: item.description,
     date: claimDate(item.entity), confidence: item.score >= 120 ? "high" : "medium",
-    relation: item.direct ? "Direct Wikidata relationship to this river" : "River named in Wikidata label/description",
+    score: item.score, relation: item.relation, evidence: item.evidence,
     wikidata_url: `https://www.wikidata.org/wiki/${item.entity.id}`,
     wikipedia: await getWikipedia(item.entity)
   })));

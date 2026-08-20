@@ -75,15 +75,29 @@ export default function App() {
   useEffect(() => {
     if (!selected?.id) return;
     const controller = new AbortController();
+    let fullResultDelivered = false;
     setRiverFacilities(null);
     setRiverFacilitiesError(null);
     setRiverFacilitiesLoading(true);
-    fetch(`/api/rivers/${selected.id}/nearby-facilities?radius=3000`, { signal: controller.signal })
+
+    const endpoint = `/api/rivers/${selected.id}/nearby-facilities?radius=3000`;
+    fetch(`${endpoint}&source=eea`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data && !fullResultDelivered) setRiverFacilities({ ...data, osm_status: "loading" });
+      })
+      .catch(() => { /* The complete request below remains authoritative. */ });
+
+    fetch(endpoint, { signal: controller.signal })
       .then(response => {
         if (!response.ok) throw new Error(`Facility service returned ${response.status}`);
         return response.json();
       })
-      .then(data => { setRiverFacilities(data); setRiverFacilitiesLoading(false); })
+      .then(data => {
+        fullResultDelivered = true;
+        setRiverFacilities(data);
+        setRiverFacilitiesLoading(false);
+      })
       .catch(error => {
         if (error.name === "AbortError") return;
         setRiverFacilitiesError(error.message); setRiverFacilitiesLoading(false);

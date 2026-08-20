@@ -111,17 +111,17 @@ function buildCorridorQuery(geometry, radius) {
     return `(around:${radius},${coordinates})`;
   });
   const filters = corridors.flatMap(corridor => CORRIDOR_FILTERS.map(tags => `nwr${tags}${corridor};`)).join("");
-  return `[out:json][timeout:30];(${filters});out tags center 3000;`;
+  return `[out:json][timeout:8];(${filters});out tags center 3000;`;
 }
 
-async function tryOverpass(query) {
+async function tryOverpass(query, timeoutMs = 20000) {
   const attempts = OVERPASS_ENDPOINTS.map(async url => {
       log.debug("OVERPASS", `Trying ${url}`);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "data=" + encodeURIComponent(query),
-        signal: AbortSignal.timeout(35000)
+        signal: AbortSignal.timeout(timeoutMs)
       });
       if (!res.ok) throw new Error(`${url} returned ${res.status}`);
       const data = await res.json();
@@ -235,7 +235,7 @@ export async function queryNearbyFacilities(lat, lon, radius = 3000) {
 export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
   const query = buildCorridorQuery(geometry, radius);
   log.info("OVERPASS", `Querying facilities within ${radius}m of river geometry`);
-  const data = await tryOverpass(query);
+  const data = await tryOverpass(query, 9000);
   const seen = new Set();
   const facilities = [];
   for (const el of data.elements || []) {

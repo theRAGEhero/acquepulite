@@ -895,46 +895,61 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
   const river = store.rivers.find(item => item.id === req.params.id);
   if (!river?.geom) return res.status(404).json({ error: "River geometry not found" });
   const radius = Math.min(5000, Math.max(500, Number(req.query.radius) || 3000));
-  const cacheKey = `${river.id}:${radius}`;
+  const sourceMode = req.query.source === "eea" ? "eea" : "all";
+  const startedAt = Date.now();
+  const cacheKey = `${river.id}:${radius}:${sourceMode}`;
   const cached = riverFacilityCache.get(cacheKey);
-  if (cached && Date.now() - cached.savedAt < RIVER_FACILITY_CACHE_MS) return res.json(cached.value);
+  if (cached && Date.now() - cached.savedAt < (cached.ttlMs || RIVER_FACILITY_CACHE_MS)) return res.json(cached.value);
 
   let osmFacilities = [];
   let osmError = null;
-  try {
-    osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
-  } catch (error) {
-    osmError = error.message;
-    log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
+  if (sourceMode === "all") {
+    try {
+      osmFacilities = await queryFacilitiesAlongRiver(river.geom, radius);
+    } catch (error) {
+      osmError = error.message;
+      log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`);
+    }
   }
 
-  const eeaFacilities = Object.values(store.eea?.sites || {}).filter(site => {
+  const indexedEea = eeaSitesNearRiver(river.geom, radius);
+  const eeaFacilities = indexedEea.sites.filter(site => {
     if (!site?.lat || !site?.lon || !(site.country || "").toUpperCase().startsWith("IT")) return false;
     return distanceToRiverMeters(site.lat, site.lon, river.geom) <= radius;
   }).map(site => {
-    const releases = (store.eea?.pollutant || []).filter(item => item.siteId === site.id || item.facilityId === site.id);
+    const releases = eeaReleasesBySite.get(String(site.id)) || [];
+    const reportedPollutants = Array.isArray(site.pollutants)
+      ? site.pollutants
+      : String(site.pollutants || "").split(/[;,|]/).map(value => value.trim()).filter(Boolean);
     return {
       id: `eea/${site.id}`, name: site.name || "Unnamed EEA industrial site",
       category: "industrial", category_label: site.sector || "EEA regulated industrial site",
       lat: site.lat, lon: site.lon,
       distance_to_river_m: distanceToRiverMeters(site.lat, site.lon, river.geom),
       source: "EEA Industrial Emissions Portal", address: site.address || "", city: site.city || "",
-      release_count: releases.length,
-      pollutants: [...new Set(releases.map(item => item.pollutant).filter(Boolean))].slice(0, 8),
+      release_count: releases.length || (site.has_release_data ? 1 : 0),
+      has_reported_releases: releases.length > 0 || !!site.has_release_data,
+      pollutants: [...new Set([
+        ...releases.map(item => item.pollutant), ...reportedPollutants
+      ].filter(Boolean))].slice(0, 8),
       detail_url: `/api/eea/sites/${encodeURIComponent(site.id)}`,
       external_url: EEA_IED.dataset_page
     };
   });
 
   const facilities = [];
-  const seenNames = new Set();
   for (const facility of [...eeaFacilities, ...osmFacilities]) {
     const normalizedName = facility.name.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
-    if (normalizedName && !normalizedName.startsWith("unnamed") && seenNames.has(normalizedName)) continue;
-    if (normalizedName && !normalizedName.startsWith("unnamed")) seenNames.add(normalizedName);
+    const duplicate = normalizedName && !normalizedName.startsWith("unnamed") && facilities.some(existing => {
+      const existingName = existing.name.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+      return existingName === normalizedName && dist(existing.lat, existing.lon, facility.lat, facility.lon) <= 0.5;
+    });
+    if (duplicate) continue;
     facilities.push(facility);
   }
   facilities.sort((a, b) => a.distance_to_river_m - b.distance_to_river_m);
+  const finalOsmCount = facilities.filter(facility => facility.source === "OpenStreetMap").length;
+  const finalEeaCount = facilities.filter(facility => facility.source === "EEA Industrial Emissions Portal").length;
 
   const geojson = {
     type: "FeatureCollection",
@@ -957,7 +972,12 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
 
   const value = {
     river: { id: river.id, name: river.name }, radius_m: radius,
-    count: facilities.length, osm_count: osmFacilities.length, eea_count: eeaFacilities.length,
+    count: facilities.length, osm_count: finalOsmCount, eea_count: finalEeaCount,
+    osm_records_matched: osmFacilities.length, eea_records_matched: eeaFacilities.length,
+    source_mode: sourceMode,
+    osm_status: sourceMode === "eea" ? "not_requested" : osmError ? "unavailable" : "complete",
+    eea_candidates_scanned: indexedEea.candidateCount,
+    query_duration_ms: Date.now() - startedAt,
     facilities, geojson,
     sources: [
       { name: "OpenStreetMap", url: "https://www.openstreetmap.org/copyright", license: "ODbL 1.0" },
@@ -966,7 +986,11 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
     warning: osmError ? `OpenStreetMap query unavailable: ${osmError}` : null,
     fetched_at: new Date().toISOString()
   };
-  riverFacilityCache.set(cacheKey, { savedAt: Date.now(), value });
+  riverFacilityCache.set(cacheKey, {
+    savedAt: Date.now(), value,
+    // Do not preserve a transient external outage for the full successful-result TTL.
+    ttlMs: osmError ? 2 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
+  });
   res.json(value);
 });
 
@@ -1036,6 +1060,7 @@ app.get("/api/eea/sites", (req, res) => {
 // EEA sites near a monitoring station (cross-reference with ARPA data)
 // Spatial grid index for EEA sites (built at boot, ~92k sites)
 let eeaGrid = null; // Map<"latIdx:lonIdx", [siteIndexes]>
+let eeaReleasesBySite = new Map();
 const GRID_STEP = 0.05; // ~5.5 km
 
 function buildEeaGrid() {
@@ -1047,7 +1072,42 @@ function buildEeaGrid() {
     if (!eeaGrid.has(key)) eeaGrid.set(key, []);
     eeaGrid.get(key).push(i);
   });
+  eeaReleasesBySite = new Map();
+  for (const release of store.eea.pollutant || []) {
+    for (const id of [release.siteId, release.facilityId].filter(Boolean).map(String)) {
+      if (!eeaReleasesBySite.has(id)) eeaReleasesBySite.set(id, []);
+      eeaReleasesBySite.get(id).push(release);
+    }
+  }
   log.info("EEA", `Spatial grid built: ${eeaGrid.size} cells for ${store.eea.sites.length} sites`);
+}
+
+function eeaSitesNearRiver(geometry, radiusMetres) {
+  const sites = store.eea?.sites || [];
+  if (!sites.length) return { sites: [], candidateCount: 0 };
+  if (!eeaGrid) return { sites, candidateCount: sites.length };
+
+  const indexes = new Set();
+  const addCells = (a, b = a) => {
+    const middleLat = (a[1] + b[1]) / 2;
+    const latPadding = radiusMetres / 110540;
+    const lonPadding = radiusMetres / (111320 * Math.max(0.2, Math.cos(middleLat * Math.PI / 180)));
+    const latMin = Math.floor((Math.min(a[1], b[1]) - latPadding) / GRID_STEP);
+    const latMax = Math.floor((Math.max(a[1], b[1]) + latPadding) / GRID_STEP);
+    const lonMin = Math.floor((Math.min(a[0], b[0]) - lonPadding) / GRID_STEP);
+    const lonMax = Math.floor((Math.max(a[0], b[0]) + lonPadding) / GRID_STEP);
+    for (let latIndex = latMin; latIndex <= latMax; latIndex++) {
+      for (let lonIndex = lonMin; lonIndex <= lonMax; lonIndex++) {
+        for (const siteIndex of eeaGrid.get(`${latIndex}:${lonIndex}`) || []) indexes.add(siteIndex);
+      }
+    }
+  };
+
+  for (const line of geometryLines(geometry)) {
+    if (line.length === 1) addCells(line[0]);
+    for (let index = 1; index < line.length; index++) addCells(line[index - 1], line[index]);
+  }
+  return { sites: [...indexes].map(index => sites[index]), candidateCount: indexes.size };
 }
 
 app.get("/api/stations/:id/nearby-eea-sites", (req, res) => {
