@@ -1719,3 +1719,60 @@ html, body, #root {
   .population-row { grid-template-columns: 1fr; }
   .population-value { text-align: left; padding-left: 17px; }
 }
+
+/* Typography comfort pass: retain the dense technical layout without 7–9 px text. */
+.title-card { font-size: 14px; }
+.title-card small { font-size: 12px; }
+.live-state { font-size: 11px; }
+.hud-metric span { font-size: 9px; }
+.hud-metric strong { font-size: 16px; }
+.hud-clock { font-size: 10px; }
+.workspace-menu-btn { font-size: 11px !important; }
+.map-tool-label, .map-tool-badge { font-size: 9px; }
+.control-panel-header span, .control-group h3,
+.quality-key-heading { font-size: 9px; }
+.control-status-grid span, .quality-key-range { font-size: 9px; }
+.control-segmented button, .pollutant-select { font-size: 12px !important; }
+.basemap-option strong, .theme-selector strong { font-size: 11px; }
+.basemap-option small, .theme-selector small { font-size: 9px; }
+.sources-menu-action strong, .layer-toggle-copy strong { font-size: 12px; }
+.sources-menu-action small, .layer-toggle-copy small,
+.control-help, .quality-key-current { font-size: 10px; }
+.control-sync { font-size: 9px; }
+.severity-grid button, .filter-actions button { font-size: 10px !important; }
+
+.monitor-drawer .meta { font-size: 13px; }
+.monitor-drawer .section-title { font-size: 13px; }
+.station-item { font-size: 14px; }
+.station-map-state { font-size: 10px; }
+.knowledge-kicker { font-size: 10px; }
+.knowledge-card p { font-size: 13px; }
+.knowledge-facts span { font-size: 9px; }
+.knowledge-facts strong, .knowledge-facts a,
+.knowledge-links a, .candidate-links a { font-size: 12px; }
+.candidate-links { font-size: 11px; }
+.wfd-guide strong { font-size: 13px; }
+.wfd-guide p { font-size: 12px; }
+.wfd-guide a, .water-body-location { font-size: 11px; }
+.objective-chip { font-size: 10px; }
+.status-component span, .status-component p,
+.record-source, .incident-method { font-size: 10px !important; }
+.status-component strong { font-size: 11px; }
+.incident-row strong { font-size: 13px; }
+.incident-row span, .incident-row small,
+.incident-links a { font-size: 10px; }
+.incident-evidence span { font-size: 9px; }
+.no-incidents, .population-loading { font-size: 11px !important; }
+.population-summary span { font-size: 9px; }
+.population-caveat { font-size: 10px; }
+.population-locate strong { font-size: 12px; }
+.population-locate small, .population-value small,
+.population-sources a, .population-method a { font-size: 9px; }
+.population-value strong { font-size: 13px; }
+.population-method { font-size: 10px; }
+.service-state.error span, .service-state.error button,
+.service-actions a { font-size: 10px; }
+.facility-source-status span { font-size: 9px; }
+.company-main strong { font-size: 12px; }
+.company-main small, .company-distance { font-size: 10px; }
+.maplibregl-popup-content { font-size: 13px; }

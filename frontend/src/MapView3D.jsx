@@ -355,7 +355,7 @@ export default function MapView3D({
     map.addLayer({
       id: "river-labels", type: "symbol", source: "labels-src",
       layout: {
-        "text-field": ["get", "name"], "text-size": neon ? 13 : 12,
+        "text-field": ["get", "name"], "text-size": neon ? 14 : 13,
         "text-anchor": "center", "text-offset": [0, -1], "text-allow-overlap": false
       },
       paint: {
@@ -407,7 +407,7 @@ export default function MapView3D({
         filter: isSelected,
         layout: {
           "text-field": ["concat", "MONITORING STATION\n", ["get", "name"]],
-          "text-size": 12, "text-anchor": "bottom", "text-offset": [0, -1.4],
+          "text-size": 14, "text-anchor": "bottom", "text-offset": [0, -1.4],
           "text-allow-overlap": true
         },
         paint: {
