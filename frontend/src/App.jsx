@@ -7,11 +7,6 @@ import ErrorBoundary from "./ErrorBoundary.jsx";
 import DataSourcesPanel from "./DataSourcesPanel.jsx";
 import { usePersistentState } from "./usePersistentState.js";
 
-const QUALITY_COLORS = {
-  clean: "#168cff", low: "#20c9ff", moderate: "#ffd43b",
-  high: "#ff8c1a", critical: "#ff3b30", nodata: "#64748b"
-};
-
 export default function App() {
   const [rivers, setRivers] = useState(null);
   const [segments, setSegments] = useState(null);
@@ -153,37 +148,23 @@ export default function App() {
         </header>
         <MonitoringHud metrics={metrics} updatedAt={dataSources?.updated_at} />
 
-        <div className="view-toggle" aria-label="Map dimension">
-          <button className={!view3D ? "active" : ""} onClick={() => setView3D(false)}>2D</button>
-          <button className={view3D ? "active" : ""} onClick={() => setView3D(true)}>3D</button>
-        </div>
-        <button className="system-btn" onClick={() => setDrawer(drawer === "sources" ? null : "sources")}>
-          <span className="system-btn-dot" /> System / sources
-        </button>
-
         <LayerControl layers={layers} onToggleLayer={toggleLayer}
           paramFilter={paramFilter} onParamChange={setParamFilter}
-          basemap={basemap} onBasemapChange={setBasemap} />
+          basemap={basemap} onBasemapChange={setBasemap}
+          view3D={view3D} onView3DChange={setView3D}
+          levelsShown={levelsShown} onToggleLevel={toggleLevel}
+          sourceDrawerOpen={drawer === "sources"}
+          metrics={metrics} updatedAt={dataSources?.updated_at}
+          onOpenSources={() => {
+            setDrawer(current => current === "sources" ? null : "sources");
+            setDrawerFullscreen(false);
+          }} />
 
         {view3D ? (
           <ErrorBoundary key="map3d"><MapView3D {...mapProps} showTerrain={layers.terrain} /></ErrorBoundary>
         ) : (
           <ErrorBoundary key="map2d"><MapView2D {...mapProps} /></ErrorBoundary>
         )}
-
-        <div className="legend">
-          <div className="legend-title">Water-quality severity</div>
-          <div className="quality-gradient" />
-          <div className="quality-range"><span>Good</span><span>Bad</span></div>
-          <div className="legend-filters">
-            {Object.entries({ clean: "Clean", low: "Low", moderate: "Moderate", high: "High", critical: "Critical" }).map(([key, label]) => (
-              <LegendCheckbox key={key} color={QUALITY_COLORS[key]} label={label} checked={levelsShown[key]}
-                onChange={value => toggleLevel(key, value)} />
-            ))}
-            <LegendCheckbox color={QUALITY_COLORS.nodata} label="No data" checked={levelsShown.nodata}
-              onChange={value => toggleLevel("nodata", value)} />
-          </div>
-        </div>
 
         {drawer && (
           <section className={`monitor-drawer ${drawer} ${drawerFullscreen ? "fullscreen" : ""}`} aria-live="polite">
@@ -223,14 +204,4 @@ function MonitoringHud({ metrics, updatedAt }) {
 
 function HudMetric({ label, value, alert }) {
   return <div className={`hud-metric ${alert ? "alert" : ""}`}><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function LegendCheckbox({ color, label, checked, onChange }) {
-  return (
-    <label className="legend-row-checkbox">
-      <input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} />
-      <span className="swatch" style={{ background: color }} />
-      <span>{label}</span>
-    </label>
-  );
 }

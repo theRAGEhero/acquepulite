@@ -11,6 +11,12 @@ conservatively matched Wikipedia/Wikidata dossier. Every displayed dataset has
 a direct source link. Ambiguous Wikimedia names are returned as candidates
 instead of asserted facts.
 
+## Map controls
+
+- **Workspace menu:** switch between 2D/3D, select the basemap, and open system/data provenance.
+- **Layers:** manage hydrography, quality reaches, labels, stations, river-corridor companies, EEA sites, and terrain directly on the map.
+- **Filters:** choose the pollutant used for reach coloring and toggle visible severity classes. The compact quality legend opens the same filter panel.
+
 ## Data sources (all real, no sample data)
 
 | Source | Region | Data | Access |

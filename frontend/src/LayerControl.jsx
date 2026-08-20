@@ -1,127 +1,256 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const BASEMAPS = [
+  { value: "neon", label: "Neon", detail: "Political monitoring" },
+  { value: "dark", label: "Dark", detail: "Low distraction" },
+  { value: "osm", label: "OSM", detail: "Street context" },
+  { value: "satellite", label: "Satellite", detail: "Aerial imagery" },
+  { value: "liberty", label: "Liberty", detail: "Detailed 3D" }
+];
+
+const POLLUTANTS = [
+  ["", "All pollutants (average)"], ["NO3", "Nitrates (NO₃)"],
+  ["PO4", "Orthophosphate (PO₄)"], ["PTOT", "Total phosphorus"],
+  ["EC", "Escherichia coli"], ["PB", "Lead"], ["NI", "Nickel"],
+  ["CR", "Chromium"], ["CD", "Cadmium"], ["AS", "Arsenic"],
+  ["HG", "Mercury"], ["BOD5", "BOD5"], ["COD", "COD"],
+  ["DO", "Dissolved oxygen"], ["NH4", "Ammonia"]
+];
+
+const QUALITY_LEVELS = [
+  ["clean", "Clean", "#168cff"], ["low", "Low", "#20c9ff"],
+  ["moderate", "Moderate", "#ffd43b"], ["high", "High", "#ff8c1a"],
+  ["critical", "Critical", "#ff3b30"], ["nodata", "No data", "#64748b"]
+];
 
 export default function LayerControl({
-  layers, onToggleLayer,
-  paramFilter, onParamChange,
-  basemap, onBasemapChange
+  layers, onToggleLayer, paramFilter, onParamChange, basemap, onBasemapChange,
+  view3D, onView3DChange, levelsShown, onToggleLevel, onOpenSources,
+  sourceDrawerOpen, metrics, updatedAt
 }) {
-  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState(null);
+  const rootRef = useRef(null);
+  const activeLayers = useMemo(() => [
+    layers.network !== false, layers.stations, layers.facilities, layers.eeaSites,
+    layers.segments, layers.labels, view3D && layers.terrain
+  ].filter(Boolean).length, [layers, view3D]);
+  const activeLevels = QUALITY_LEVELS.filter(([key]) => levelsShown[key]).length;
+  const filtersChanged = Boolean(paramFilter) || activeLevels !== QUALITY_LEVELS.length;
+  const pollutantLabel = POLLUTANTS.find(([value]) => value === (paramFilter || ""))?.[1] || "All pollutants";
+
+  useEffect(() => {
+    const onPointerDown = event => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setPanel(null);
+    };
+    const onKeyDown = event => { if (event.key === "Escape") setPanel(null); };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  const togglePanel = name => setPanel(current => current === name ? null : name);
+  const resetFilters = () => {
+    onParamChange(null);
+    QUALITY_LEVELS.forEach(([key]) => onToggleLevel(key, true));
+  };
 
   return (
-    <>
-      <button
-        className={`layer-btn ${open ? "active" : ""}`}
-        onClick={() => setOpen(!open)}
-        aria-label="Layer controls"
-        title="Layers & filters"
-      >
-        {open ? "✕" : "☰"}
+    <div className="map-controls" ref={rootRef}>
+      <button className={`workspace-menu-btn ${panel === "menu" ? "active" : ""}`}
+        onClick={() => togglePanel("menu")} aria-expanded={panel === "menu"}
+        aria-controls="workspace-panel" aria-label="Open workspace menu">
+        <Icon name={panel === "menu" ? "close" : "menu"} />
+        <span>Workspace</span>
       </button>
 
-      <div className={`layer-control ${open ? "open" : ""}`}>
-        <div className="lc-header">
-          <span>Layers & Filters</span>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-network">Complete river network (OSM)</label>
-          <label className="switch">
-            <input id="sw-network" type="checkbox" checked={layers.network !== false}
-              onChange={(e) => onToggleLayer("network", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-stations">Monitoring stations</label>
-          <label className="switch">
-            <input id="sw-stations" type="checkbox" checked={layers.stations}
-              onChange={(e) => onToggleLayer("stations", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-facilities">Nearby facilities (OSM)</label>
-          <label className="switch">
-            <input id="sw-facilities" type="checkbox" checked={layers.facilities}
-              onChange={(e) => onToggleLayer("facilities", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-eea-sites">EEA industrial sites</label>
-          <label className="switch">
-            <input id="sw-eea-sites" type="checkbox" checked={layers.eeaSites}
-              onChange={(e) => onToggleLayer("eeaSites", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-segments">Per-tract coloring</label>
-          <label className="switch">
-            <input id="sw-segments" type="checkbox" checked={layers.segments}
-              onChange={(e) => onToggleLayer("segments", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-labels">River name labels</label>
-          <label className="switch">
-            <input id="sw-labels" type="checkbox" checked={layers.labels}
-              onChange={(e) => onToggleLayer("labels", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div className="lc-row">
-          <label htmlFor="sw-terrain">3D Terrain</label>
-          <label className="switch">
-            <input id="sw-terrain" type="checkbox" checked={layers.terrain}
-              onChange={(e) => onToggleLayer("terrain", e.target.checked)} />
-            <span className="slider"></span>
-          </label>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 4 }}>
-            Color by pollutant
-          </label>
-          <select value={paramFilter || ""} onChange={(e) => onParamChange(e.target.value || null)}>
-            <option value="">All pollutants (avg)</option>
-            <option value="NO3">Nitrates (NO₃)</option>
-            <option value="PO4">Orthophosphate (PO₄)</option>
-            <option value="PTOT">Total Phosphorus</option>
-            <option value="EC">Escherichia coli</option>
-            <option value="PB">Lead</option>
-            <option value="NI">Nickel</option>
-            <option value="CR">Chromium</option>
-            <option value="CD">Cadmium</option>
-            <option value="AS">Arsenic</option>
-            <option value="HG">Mercury</option>
-            <option value="BOD5">BOD5</option>
-            <option value="COD">COD</option>
-            <option value="DO">Dissolved Oxygen</option>
-            <option value="NH4">Ammonia</option>
-          </select>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <label style={{ fontSize: 12, color: "#9ca3af", display: "block", marginBottom: 4 }}>
-            Basemap
-          </label>
-          <select value={basemap} onChange={(e) => onBasemapChange(e.target.value)}>
-            <option value="osm">OpenStreetMap (flat)</option>
-            <option value="satellite">Satellite</option>
-            <option value="dark">Dark</option>
-            <option value="neon">Neon political</option>
-            <option value="liberty">Liberty (3D)</option>
-          </select>
-        </div>
+      <div className="map-tool-dock" aria-label="Map tools">
+        <ToolButton name="layers" label="Layers" active={panel === "layers"}
+          badge={activeLayers} onClick={() => togglePanel("layers")} />
+        <ToolButton name="filter" label="Filters" active={panel === "filters"}
+          alert={filtersChanged} onClick={() => togglePanel("filters")} />
       </div>
-    </>
+
+      <button className={`map-quality-key ${panel === "filters" ? "active" : ""}`}
+        onClick={() => togglePanel("filters")} aria-label="Open water-quality filters">
+        <span className="quality-key-heading">Water quality</span>
+        <span className="quality-key-current">{pollutantLabel}</span>
+        <span className="quality-key-gradient" />
+        <span className="quality-key-range"><span>Good</span><span>Bad</span></span>
+      </button>
+
+      {panel === "menu" && (
+        <ControlPanel id="workspace-panel" className="workspace-panel" title="Workspace"
+          eyebrow="River Watch / Italy" onClose={() => setPanel(null)}>
+          <div className="control-status-grid">
+            <ControlMetric label="Rivers" value={metrics?.rivers ?? "—"} />
+            <ControlMetric label="Stations" value={metrics?.stations ?? "—"} />
+            <ControlMetric label="Official lines" value={`${metrics?.official ?? 0}%`} />
+          </div>
+
+          <ControlGroup label="Map dimension">
+            <div className="control-segmented" role="group" aria-label="Map dimension">
+              <button className={!view3D ? "active" : ""} onClick={() => onView3DChange(false)}>2D map</button>
+              <button className={view3D ? "active" : ""} onClick={() => onView3DChange(true)}>3D terrain</button>
+            </div>
+          </ControlGroup>
+
+          <ControlGroup label="Basemap">
+            <div className="basemap-grid">
+              {BASEMAPS.map(item => (
+                <button key={item.value} className={`basemap-option ${basemap === item.value ? "active" : ""}`}
+                  onClick={() => onBasemapChange(item.value)} aria-pressed={basemap === item.value}>
+                  <span className={`basemap-sample ${item.value}`} />
+                  <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                  {basemap === item.value && <Icon name="check" />}
+                </button>
+              ))}
+            </div>
+          </ControlGroup>
+
+          <button className={`sources-menu-action ${sourceDrawerOpen ? "active" : ""}`}
+            onClick={() => { onOpenSources(); setPanel(null); }}>
+            <Icon name="database" />
+            <span><strong>System & data sources</strong><small>Coverage, licenses and provenance</small></span>
+            <Icon name="arrow" />
+          </button>
+          <div className="control-sync">Last agency sync: {updatedAt
+            ? new Date(updatedAt).toLocaleString()
+            : "waiting for data"}</div>
+        </ControlPanel>
+      )}
+
+      {panel === "layers" && (
+        <ControlPanel id="layers-panel" className="tool-panel" title="Map layers"
+          eyebrow={`${activeLayers} visible`} onClose={() => setPanel(null)}>
+          <ControlGroup label="Hydrography">
+            <LayerToggle id="sw-network" checked={layers.network !== false} color="#1688b8"
+              title="River network" detail="Complete OSM waterway context"
+              onChange={value => onToggleLayer("network", value)} />
+            <LayerToggle id="sw-segments" checked={layers.segments} color="#ff8c1a"
+              title="Quality reaches" detail="Color official reaches by condition"
+              onChange={value => onToggleLayer("segments", value)} />
+            <LayerToggle id="sw-labels" checked={layers.labels} color="#9dfcff"
+              title="River labels" detail="Names positioned on monitored rivers"
+              onChange={value => onToggleLayer("labels", value)} />
+          </ControlGroup>
+
+          <ControlGroup label="Monitoring & pressure">
+            <LayerToggle id="sw-stations" checked={layers.stations} color="#35f58a"
+              title="Monitoring stations" detail="Regional agency sampling points"
+              onChange={value => onToggleLayer("stations", value)} />
+            <LayerToggle id="sw-facilities" checked={layers.facilities} color="#ff665c"
+              title="River-corridor companies" detail="Facilities loaded for the selected river"
+              onChange={value => onToggleLayer("facilities", value)} />
+            <LayerToggle id="sw-eea-sites" checked={layers.eeaSites} color="#c084fc"
+              title="EEA industrial sites" detail="Regulated installations across Italy"
+              onChange={value => onToggleLayer("eeaSites", value)} />
+          </ControlGroup>
+
+          <ControlGroup label="Surface">
+            <LayerToggle id="sw-terrain" checked={layers.terrain} color="#7dd3fc"
+              title="Terrain relief" detail={view3D ? "Elevation is active in 3D" : "Switch to 3D to see elevation"}
+              onChange={value => onToggleLayer("terrain", value)} disabled={!view3D} />
+          </ControlGroup>
+        </ControlPanel>
+      )}
+
+      {panel === "filters" && (
+        <ControlPanel id="filters-panel" className="tool-panel" title="Quality filters"
+          eyebrow={filtersChanged ? "Custom view" : "All data"} onClose={() => setPanel(null)}>
+          <ControlGroup label="Color monitored reaches by">
+            <select className="pollutant-select" value={paramFilter || ""}
+              onChange={event => onParamChange(event.target.value || null)}>
+              {POLLUTANTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <p className="control-help">Changes the measurement used to score monitored reaches. Regional WFD classes remain authoritative.</p>
+          </ControlGroup>
+
+          <ControlGroup label={`Visible severity · ${activeLevels}/${QUALITY_LEVELS.length}`}>
+            <div className="severity-grid">
+              {QUALITY_LEVELS.map(([key, label, color]) => (
+                <button key={key} className={levelsShown[key] ? "active" : ""}
+                  onClick={() => onToggleLevel(key, !levelsShown[key])}
+                  aria-pressed={levelsShown[key]}>
+                  <span style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                  {label}
+                  <Icon name={levelsShown[key] ? "check" : "minus"} />
+                </button>
+              ))}
+            </div>
+          </ControlGroup>
+
+          <div className="filter-actions">
+            <button onClick={resetFilters} disabled={!filtersChanged}>Reset filters</button>
+            <button onClick={() => QUALITY_LEVELS.forEach(([key]) => onToggleLevel(key, key !== "nodata"))}>
+              Hide no-data
+            </button>
+          </div>
+        </ControlPanel>
+      )}
+    </div>
   );
+}
+
+function ToolButton({ name, label, active, badge, alert, onClick }) {
+  return (
+    <button className={`map-tool-btn ${active ? "active" : ""}`} onClick={onClick}
+      aria-label={label} aria-expanded={active} title={label}>
+      <Icon name={name} />
+      <span className="map-tool-label">{label}</span>
+      {badge != null && <span className="map-tool-badge">{badge}</span>}
+      {alert && <span className="map-tool-alert" />}
+    </button>
+  );
+}
+
+function ControlPanel({ id, className, title, eyebrow, onClose, children }) {
+  return (
+    <section id={id} className={`map-control-panel ${className}`} aria-label={title}>
+      <header className="control-panel-header">
+        <div><span>{eyebrow}</span><h2>{title}</h2></div>
+        <button onClick={onClose} aria-label={`Close ${title}`}><Icon name="close" /></button>
+      </header>
+      <div className="control-panel-body">{children}</div>
+    </section>
+  );
+}
+
+function ControlGroup({ label, children }) {
+  return <section className="control-group"><h3>{label}</h3>{children}</section>;
+}
+
+function LayerToggle({ id, checked, color, title, detail, onChange, disabled = false }) {
+  return (
+    <label className={`layer-toggle-row ${disabled ? "disabled" : ""}`} htmlFor={id}>
+      <span className="layer-symbol" style={{ color, background: color }} />
+      <span className="layer-toggle-copy"><strong>{title}</strong><small>{detail}</small></span>
+      <span className="switch">
+        <input id={id} type="checkbox" checked={checked} disabled={disabled}
+          onChange={event => onChange(event.target.checked)} />
+        <span className="slider" />
+      </span>
+    </label>
+  );
+}
+
+function ControlMetric({ label, value }) {
+  return <div><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function Icon({ name }) {
+  const paths = {
+    menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
+    close: <><path d="m6 6 12 12M18 6 6 18"/></>,
+    layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
+    filter: <><path d="M4 5h16M7 12h10M10 19h4"/></>,
+    database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
+    arrow: <><path d="M5 12h14M14 7l5 5-5 5"/></>,
+    check: <><path d="m5 12 4 4L19 6"/></>,
+    minus: <><path d="M6 12h12"/></>
+  };
+  return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
