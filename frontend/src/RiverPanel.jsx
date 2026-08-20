@@ -312,7 +312,7 @@ function RiverCompanies({ data, loading, error, onCompanyClick }) {
       {loading && !data && <div className="loading">Checking the indexed EEA industrial registry…</div>}
       {loading && data && <div className="facility-progress"><span /> EEA results ready · checking OpenStreetMap…</div>}
       {error && <div className="facility-warning">Facility scan failed: {error}</div>}
-      {data?.warning && <div className="facility-warning">{data.warning}</div>}
+      {data?.warning && <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}</div>}
       {data && data.count === 0 && !loading && <div className="loading">No mapped companies found in this corridor.</div>}
       {data && data.count > 0 && (
         <>

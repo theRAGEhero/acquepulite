@@ -912,36 +912,44 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
     }
   }
 
-  const indexedEea = eeaSitesNearRiver(river.geom, radius);
-  const eeaFacilities = indexedEea.sites.filter(site => {
-    if (!site?.lat || !site?.lon || !(site.country || "").toUpperCase().startsWith("IT")) return false;
-    return distanceToRiverMeters(site.lat, site.lon, river.geom) <= radius;
-  }).map(site => {
-    const releases = eeaReleasesBySite.get(String(site.id)) || [];
-    const reportedPollutants = Array.isArray(site.pollutants)
-      ? site.pollutants
-      : String(site.pollutants || "").split(/[;,|]/).map(value => value.trim()).filter(Boolean);
-    return {
-      id: `eea/${site.id}`, name: site.name || "Unnamed EEA industrial site",
-      category: "industrial", category_label: site.sector || "EEA regulated industrial site",
-      lat: site.lat, lon: site.lon,
-      distance_to_river_m: distanceToRiverMeters(site.lat, site.lon, river.geom),
-      source: "EEA Industrial Emissions Portal", address: site.address || "", city: site.city || "",
-      release_count: releases.length || (site.has_release_data ? 1 : 0),
-      has_reported_releases: releases.length > 0 || !!site.has_release_data,
-      pollutants: [...new Set([
-        ...releases.map(item => item.pollutant), ...reportedPollutants
-      ].filter(Boolean))].slice(0, 8),
-      detail_url: `/api/eea/sites/${encodeURIComponent(site.id)}`,
-      external_url: EEA_IED.dataset_page
-    };
-  });
+  let indexedEea = { sites: [], candidateCount: 0 };
+  let eeaFacilities = [];
+  let eeaError = null;
+  try {
+    indexedEea = eeaSitesNearRiver(river.geom, radius);
+    eeaFacilities = indexedEea.sites.filter(site => {
+      if (site?.lat == null || site?.lon == null || !(site.country || "").toUpperCase().startsWith("IT")) return false;
+      return distanceToRiverMeters(site.lat, site.lon, river.geom) <= radius;
+    }).map(site => {
+      const releases = eeaReleasesBySite.get(String(site.id)) || [];
+      const reportedPollutants = Array.isArray(site.pollutants)
+        ? site.pollutants
+        : String(site.pollutants || "").split(/[;,|]/).map(value => value.trim()).filter(Boolean);
+      return {
+        id: `eea/${site.id}`, name: site.name || "Unnamed EEA industrial site",
+        category: "industrial", category_label: site.sector || "EEA regulated industrial site",
+        lat: site.lat, lon: site.lon,
+        distance_to_river_m: distanceToRiverMeters(site.lat, site.lon, river.geom),
+        source: "EEA Industrial Emissions Portal", address: site.address || "", city: site.city || "",
+        release_count: releases.length || (site.has_release_data ? 1 : 0),
+        has_reported_releases: releases.length > 0 || !!site.has_release_data,
+        pollutants: [...new Set([
+          ...releases.map(item => item.pollutant), ...reportedPollutants
+        ].filter(Boolean))].slice(0, 8),
+        detail_url: `/api/eea/sites/${encodeURIComponent(site.id)}`,
+        external_url: EEA_IED.dataset_page
+      };
+    });
+  } catch (error) {
+    eeaError = error.message;
+    log.warn("EEA", `River corridor lookup failed for ${river.name}: ${error.message}`);
+  }
 
   const facilities = [];
   for (const facility of [...eeaFacilities, ...osmFacilities]) {
-    const normalizedName = facility.name.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+    const normalizedName = String(facility.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
     const duplicate = normalizedName && !normalizedName.startsWith("unnamed") && facilities.some(existing => {
-      const existingName = existing.name.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+      const existingName = String(existing.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
       return existingName === normalizedName && dist(existing.lat, existing.lon, facility.lat, facility.lon) <= 0.5;
     });
     if (duplicate) continue;
@@ -976,6 +984,7 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
     osm_records_matched: osmFacilities.length, eea_records_matched: eeaFacilities.length,
     source_mode: sourceMode,
     osm_status: sourceMode === "eea" ? "not_requested" : osmError ? "unavailable" : "complete",
+    eea_status: eeaError ? "unavailable" : "complete",
     eea_candidates_scanned: indexedEea.candidateCount,
     query_duration_ms: Date.now() - startedAt,
     facilities, geojson,
@@ -983,13 +992,16 @@ app.get("/api/rivers/:id/nearby-facilities", async (req, res) => {
       { name: "OpenStreetMap", url: "https://www.openstreetmap.org/copyright", license: "ODbL 1.0" },
       { name: "EEA Industrial Emissions Portal", url: EEA_IED.dataset_page, license: EEA_IED.license }
     ],
-    warning: osmError ? `OpenStreetMap query unavailable: ${osmError}` : null,
+    warning: [
+      osmError ? `OpenStreetMap query unavailable: ${osmError}. Showing EEA registry results.` : null,
+      eeaError ? `EEA registry lookup unavailable: ${eeaError}. Showing OpenStreetMap results.` : null
+    ].filter(Boolean).join(" ") || null,
     fetched_at: new Date().toISOString()
   };
   riverFacilityCache.set(cacheKey, {
     savedAt: Date.now(), value,
     // Do not preserve a transient external outage for the full successful-result TTL.
-    ttlMs: osmError ? 2 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
+    ttlMs: osmError || eeaError ? 2 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
   });
   res.json(value);
 });

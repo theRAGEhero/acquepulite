@@ -82,26 +82,47 @@ export default function App() {
     setRiverFacilitiesLoading(true);
 
     const endpoint = `/api/rivers/${selected.id}/nearby-facilities?radius=3000`;
-    fetch(`${endpoint}&source=eea`, { signal: controller.signal })
+    const eeaRequest = fetch(`${endpoint}&source=eea`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
-        if (data && !fullResultDelivered) setRiverFacilities({ ...data, osm_status: "loading" });
+        if (data && !fullResultDelivered) {
+          setRiverFacilities({ ...data, osm_status: "loading" });
+          setRiverFacilitiesError(null);
+        }
+        return data;
       })
-      .catch(() => { /* The complete request below remains authoritative. */ });
+      .catch(() => null);
 
     fetch(endpoint, { signal: controller.signal })
-      .then(response => {
-        if (!response.ok) throw new Error(`Facility service returned ${response.status}`);
-        return response.json();
+      .then(async response => {
+        if (response.ok) return response.json();
+        let detail = "";
+        try {
+          const payload = await response.json();
+          detail = payload.detail || payload.error || "";
+        } catch { /* A proxy may return a non-JSON error page. */ }
+        throw new Error(detail || `Facility service returned ${response.status}`);
       })
       .then(data => {
         fullResultDelivered = true;
         setRiverFacilities(data);
         setRiverFacilitiesLoading(false);
       })
-      .catch(error => {
+      .catch(async error => {
         if (error.name === "AbortError") return;
-        setRiverFacilitiesError(error.message); setRiverFacilitiesLoading(false);
+        const eeaData = await eeaRequest;
+        if (controller.signal.aborted) return;
+        if (eeaData) {
+          setRiverFacilities({
+            ...eeaData,
+            osm_status: "unavailable",
+            warning: `OpenStreetMap scan unavailable: ${error.message}. Showing EEA registry results.`
+          });
+          setRiverFacilitiesError(null);
+        } else {
+          setRiverFacilitiesError(error.message);
+        }
+        setRiverFacilitiesLoading(false);
       });
     return () => controller.abort();
   }, [selected?.id]);

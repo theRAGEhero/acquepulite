@@ -920,6 +920,12 @@ html, body, #root {
   font-size: 11px;
   margin-bottom: 8px;
 }
+.facility-warning.partial {
+  color: #ffe39a;
+  background: rgba(255, 190, 45, .08);
+  border-color: rgba(255, 190, 45, .28);
+}
+.facility-warning.partial strong { display: block; margin-bottom: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
 .facility-progress {
   display: flex;
   align-items: center;
@@ -1607,6 +1613,7 @@ html, body, #root {
 .app.light-ui .show-companies,
 .app.light-ui .service-state.error button,
 .app.light-ui .service-actions a { color: #08799e; background: #e8f5f9; border-color: rgba(8, 127, 166, .24); }
+.app.light-ui .facility-warning.partial { color: #7a5600; background: #fff8df; border-color: #e3c66b; }
 
 .app.light-ui .maplibregl-ctrl-group,
 .app.light-ui .maplibregl-ctrl-scale {
