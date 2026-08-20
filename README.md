@@ -34,6 +34,8 @@ registry on every click.
 | ARPAE | Emilia-Romagna | River monitoring stations and measured parameters | Automatic via API |
 | ARPA Piemonte (ArcGIS) | Piemonte | WFD ecological/chemical classification per water body | Automatic via API |
 | ARPA Veneto (CSV) | Veneto | LIMeco nutrient/oxygen indicator, latest result per water body | Automatic via API |
+| ARPA FVG (HTML) | Friuli-Venezia Giulia | WFD ecological/chemical classification, municipality and European code | Automatic from official tables |
+| ARPA Lazio (CKAN CSV) | Lazio | Provisional 2021–2023 WFD ecological/chemical status and station code | Automatic via official CSV |
 | WISE WFD 2022 + OpenStreetMap | National | Official river lines + topology-safe fallback | Bulk download + automatic fallback |
 | Wikidata + Wikipedia | National | River identity, descriptions, facts and conservatively linked environmental incidents | On demand, cached 24 hours |
 | OSM Overpass + EEA IED | National/EU | Companies and potential sources within a river corridor | On demand |
@@ -104,11 +106,13 @@ npm run dev        # http://localhost:5173
 
 ## Notes
 - No mock/sample data anywhere: rivers without real agency data are not shown.
+- Lazio uses its live official CSV/datastore first and a versioned copy of the same
+  official 2021–2023 CSV during Open Data Lazio outages.
 - Layer toggles, pollutant filter, basemap, and 2D/3D view persist in localStorage.
 - Environmental incidents are shown only when a conservative Wikidata match is
   found. Structured river/event properties are checked in both directions and
   every accepted result includes its matching evidence. “Not found in Wikidata”
   never means that no incident occurred.
-- Attribution: ARPA Lombardia (CC0), ARPAT/ARPAE/ARPAV (CC BY where specified),
+- Attribution: ARPA Lombardia (CC0), ARPAT/ARPAE/ARPAV/ARPA FVG/ARPA Lazio (CC BY where specified),
   ARPA Piemonte service terms, WISE/EEA re-use terms, OpenStreetMap (ODbL),
   Wikidata (CC0), and Wikipedia (CC BY-SA).

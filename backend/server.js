@@ -9,6 +9,8 @@ import { loadArpatToscana } from "./arpatToscana.js";
 import { loadArpaeEmiliaRomagna } from "./arpaeEmiliaRomagna.js";
 import { loadArpaPiemonte } from "./arpaPiemonte.js";
 import { loadArpaVeneto } from "./arpaVeneto.js";
+import { loadArpaFvg } from "./arpaFvg.js";
+import { loadArpaLazio } from "./arpaLazio.js";
 import {
   queryNearbyFacilities, queryFacilitiesAlongRiver, distanceToRiverMeters, CATEGORY_LABELS
 } from "./overpass.js";
@@ -102,7 +104,7 @@ let store = {
   rivers: [],                       // only rivers with real agency data
   stations: [],
   arpaMeasurements: new Map(),      // Lombardia measurements
-  arpatStretches: new Map(),        // Toscana water-body statuses
+  arpatStretches: new Map(),        // Regional water-body status assessments
   eea: null,                        // EEA industrial emissions dataset
   hydrography: null,                // versioned official line catalog
   arpaFetchedAt: null
@@ -183,6 +185,32 @@ async function initArpa() {
   } catch (e) {
     markSourceFailure("ARPA Veneto", e);
     log.error("ARPA-VENETO", `Veneto failed: ${e.message}`);
+  }
+
+  // --- 6. ARPA FVG (official WFD classification tables) ---
+  try {
+    const fvg = await loadArpaFvg();
+    for (const river of fvg) {
+      arpatStretches.set(river.id, river);
+      allRivers.push(river);
+    }
+    log.info("ARPA-FVG", `Friuli-Venezia Giulia: ${fvg.length} rivers, ${fvg.reduce((sum, river) => sum + river.stretches.length, 0)} classified water bodies`);
+  } catch (e) {
+    markSourceFailure("ARPA FVG", e);
+    log.error("ARPA-FVG", `Friuli-Venezia Giulia failed: ${e.message}`);
+  }
+
+  // --- 7. ARPA Lazio (official CKAN CSV, 2021-2023 WFD assessment) ---
+  try {
+    const lazio = await loadArpaLazio();
+    for (const river of lazio) {
+      arpatStretches.set(river.id, river);
+      allRivers.push(river);
+    }
+    log.info("ARPA-LAZIO", `Lazio: ${lazio.length} rivers, ${lazio.reduce((sum, river) => sum + river.stretches.length, 0)} classified water bodies`);
+  } catch (e) {
+    markSourceFailure("ARPA Lazio", e);
+    log.error("ARPA-LAZIO", `Lazio failed: ${e.message}`);
   }
 
   store = {
@@ -1364,17 +1392,18 @@ app.get("/api/arpa-regions", (_req, res) => {
 
 // --- Data sources overview (for the "About data" panel) ---
 app.get("/api/data-sources", (_req, res) => {
+  const integratedRegions = ARPA_REGIONS.filter(region => region.status === "integrated");
   res.json({
     water_quality: {
       source: "Official regional environmental agencies",
-      dataset: "Five integrated regional datasets",
+      dataset: `${integratedRegions.length} integrated regional datasets`,
       license: "Dataset-specific open terms",
       source_url: "https://www.snpambiente.it/",
       license_url: null,
-      coverage: "Lombardia, Toscana, Emilia-Romagna, Piemonte and Veneto",
+      coverage: integratedRegions.map(region => region.name).join(", "),
       other_regions: ARPA_REGIONS.filter(r => r.status !== "integrated").length + " regions researched, pending integration",
       regions: ARPA_REGIONS,
-      sources: ARPA_REGIONS.filter(region => region.status === "integrated").map(region => ({
+      sources: integratedRegions.map(region => ({
         name: region.arpa, region: region.name, dataset: region.water_quality_dataset,
         source_url: region.dataset_url || region.portal,
         download_url: region.download_url || null,

@@ -52,10 +52,12 @@ export const ARPA_REGIONS = [
   {
     code: "FVG", name: "Friuli-Venezia Giulia", arpa: "ARPA FVG",
     portal: "https://www.arpa.fvg.it",
-    api_type: "CSV/HTML",
-    water_quality_dataset: "acque-superficiali",
-    status: "researched",
-    notes: "CSV downloads available from ARPA FVG ambientale section."
+    api_type: "Official HTML tables",
+    water_quality_dataset: "Qualità delle acque interne — classificazione dei corpi idrici fluviali",
+    dataset_url: "https://www.arpa.fvg.it/temi/temi/acqua/sezioni-principali/acque-interne/qualita-delle-acque/",
+    license: "CC BY 4.0", license_url: "https://www.arpa.fvg.it/link-footer/link-in-basso-cookie-privacy/note-legali/",
+    status: "integrated",
+    notes: "Official WFD ecological and chemical classes by water body, municipality and European code; classification 2014-2019 used by the 2021-2027 Water Management Plan."
   },
   {
     code: "LIG", name: "Liguria", arpa: "ARPAL",
@@ -95,11 +97,14 @@ export const ARPA_REGIONS = [
   },
   {
     code: "LAZ", name: "Lazio", arpa: "ARPA Lazio",
-    portal: "https://www.arpalazio.it",
-    api_type: "HTML/PDF",
-    water_quality_dataset: "qualita-acque-superficiali",
-    status: "researched",
-    notes: "PDF reports per monitoring station. No structured API."
+    portal: "https://dati.lazio.it",
+    api_type: "CKAN/CSV",
+    water_quality_dataset: "Stato ecologico e stato chimico dei corpi idrici di acque fluviali",
+    dataset_url: "https://dati.lazio.it/dataset/stato-ecologico-e-stato-chimico-dei-corpi-idrici-di-acque-fluviali",
+    download_url: "https://dati.lazio.it/dataset/1a5e3f3a-5dc1-43c4-adae-6d4451df2d56/resource/fccf2de5-3290-41da-a803-4f5a36e9d6ce/download/stato-ecologico-e-chimico-fiumi-2021-2023.csv",
+    license: "CC BY 4.0", license_url: "https://creativecommons.org/licenses/by/4.0/",
+    status: "integrated",
+    notes: "Official provisional WFD ecological/potential and chemical classes for the 2021-2023 monitoring triennium, with European water-body and regional station codes."
   },
   {
     code: "MAR", name: "Marche", arpa: "ARPAM",
