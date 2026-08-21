@@ -2,12 +2,52 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 
 const STYLES = {
+  light: "https://tiles.openfreemap.org/styles/liberty",
   osm: "https://tiles.openfreemap.org/styles/liberty",
   liberty: "https://tiles.openfreemap.org/styles/liberty",
   dark: "https://tiles.openfreemap.org/styles/dark",
   neon: "https://tiles.openfreemap.org/styles/dark",
   satellite: "https://tiles.openfreemap.org/styles/satellite"
 };
+
+function applyLightBaseStyle(map) {
+  const style = map.getStyle();
+  if (!style?.layers) return;
+
+  for (const layer of style.layers) {
+    const name = `${layer.id} ${layer["source-layer"] || ""}`.toLowerCase();
+    const country = name.includes("country") || name.includes("admin_0") || name.includes("admin-0");
+    const boundary = country || name.includes("boundary") || name.includes("admin");
+    const water = name.includes("water") || name.includes("ocean") || name.includes("sea");
+    const building = name.includes("building");
+    const park = name.includes("park") || name.includes("forest") || name.includes("wood") || name.includes("landcover");
+    const road = name.includes("road") || name.includes("transport") || name.includes("highway") || name.includes("street");
+    try {
+      if (layer.type === "background") {
+        map.setPaintProperty(layer.id, "background-color", "#f8fafc");
+        map.setPaintProperty(layer.id, "background-opacity", 1);
+      } else if (layer.type === "fill") {
+        map.setPaintProperty(layer.id, "fill-color",
+          water ? "#dceff7" : building ? "#e7edf0" : park ? "#eef5ef" : "#fbfcfd");
+        map.setPaintProperty(layer.id, "fill-opacity", water ? 1 : 0.96);
+      } else if (layer.type === "line") {
+        map.setLayoutProperty(layer.id, "visibility", "visible");
+        map.setPaintProperty(layer.id, "line-color",
+          boundary ? (country ? "#526d7b" : "#a6b5bd") : water ? "#a8d3e2" : road ? "#d2dce1" : "#dce4e8");
+        map.setPaintProperty(layer.id, "line-opacity", boundary ? (country ? 0.85 : 0.58) : road ? 0.86 : 0.7);
+        if (boundary) map.setPaintProperty(layer.id, "line-width", country ? 1.25 : 0.65);
+      } else if (layer.type === "symbol") {
+        map.setLayoutProperty(layer.id, "visibility", "visible");
+        map.setPaintProperty(layer.id, "text-color", country ? "#102f40" : "#405965");
+        map.setPaintProperty(layer.id, "text-halo-color", "#ffffff");
+        map.setPaintProperty(layer.id, "text-halo-width", country ? 2 : 1.4);
+        map.setPaintProperty(layer.id, "text-opacity", country ? 0.96 : 0.88);
+      }
+    } catch {
+      // Remote styles can expose different paint properties.
+    }
+  }
+}
 
 const NEON_POLLUTION_COLOR = [
   "case", ["==", ["get", "pollution_score"], null], "#64748b",
@@ -158,6 +198,7 @@ export default function MapView3D({
   function rebuildMap(map) {
     if (map.setProjection) map.setProjection({ type: refs.current.flat ? "mercator" : "globe" });
     if (refs.current.basemap === "neon") applyNeonBaseStyle(map);
+    if (refs.current.basemap === "light") applyLightBaseStyle(map);
     if (refs.current.showTerrain && !refs.current.flat) addTerrain(map);
     addLayers(map);
   }
@@ -185,6 +226,7 @@ export default function MapView3D({
   function addLayers(map) {
     const data = refs.current;
     const neon = data.basemap === "neon";
+    const light = data.basemap === "light";
 
     for (const item of data.handlers) {
       try { map.off(item.type, item.layerId, item.handler); } catch { /* already removed */ }
@@ -203,7 +245,7 @@ export default function MapView3D({
 
     const clone = (value) => JSON.parse(JSON.stringify(value));
 
-    if (data.showNetwork) addHydroNetwork(map, neon);
+    if (data.showNetwork) addHydroNetwork(map, neon, light);
 
     if (data.rivers?.features?.length) {
       map.addSource("rivers-src", { type: "geojson", data: clone(data.rivers) });
@@ -211,7 +253,7 @@ export default function MapView3D({
         id: "rivers-context", type: "line", source: "rivers-src",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": neon ? "#24718c" : "#4682a9",
+          "line-color": neon ? "#24718c" : light ? "#266f8b" : "#4682a9",
           "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 10, 3.5],
           "line-opacity": 0.7
         }
@@ -226,7 +268,7 @@ export default function MapView3D({
       map.addLayer({
         id: "rivers-casing", type: "line", source: "segments-src",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#010208", "line-width": neon ? 12 : 9, "line-opacity": neon ? 0.9 : 0.5 }
+        paint: { "line-color": light ? "#ffffff" : "#010208", "line-width": neon ? 12 : 9, "line-opacity": neon ? 0.9 : light ? 0.88 : 0.5 }
       });
       if (neon) addGlowLine(map, "segments-glow", "segments-src", NEON_POLLUTION_COLOR);
       map.addLayer({
@@ -254,13 +296,13 @@ export default function MapView3D({
       addEvent(map, "click", "rivers-2d", (e) => data.onRiverClick(e.features[0].properties));
     }
 
-    if (data.showLabels && data.rivers) addRiverLabels(map, data.rivers, clone, neon);
+    if (data.showLabels && data.rivers) addRiverLabels(map, data.rivers, clone, neon, light);
     if (data.stations?.features?.length) addStations(map, data, clone, neon);
     if (data.eeaSites?.features?.length) addEeaSites(map, data.eeaSites, clone, neon);
     if (data.riverFacilities?.features?.length) addRiverFacilities(map, data.riverFacilities, clone, neon);
   }
 
-  function addHydroNetwork(map, neon) {
+  function addHydroNetwork(map, neon, light) {
     if (!map.getSource("openmaptiles")) return;
     try {
       if (neon) {
@@ -279,7 +321,7 @@ export default function MapView3D({
         minzoom: 4,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": neon ? "#1688b8" : "#4aa3d8",
+          "line-color": neon ? "#1688b8" : light ? "#4e9fbd" : "#4aa3d8",
           "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.35, 8, 0.8, 12, 2.2],
           "line-opacity": neon ? 0.55 : 0.42
         }
@@ -359,7 +401,7 @@ export default function MapView3D({
     });
   }
 
-  function addRiverLabels(map, riversData, clone, neon) {
+  function addRiverLabels(map, riversData, clone, neon, light) {
     const labelData = {
       type: "FeatureCollection",
       features: riversData.features.map((feature) => {
@@ -382,8 +424,8 @@ export default function MapView3D({
         "text-anchor": "center", "text-offset": [0, -1], "text-allow-overlap": false
       },
       paint: {
-        "text-color": neon ? "#9dfcff" : "#ffffff",
-        "text-halo-color": "#010208", "text-halo-width": neon ? 3 : 2
+        "text-color": neon ? "#9dfcff" : light ? "#163b4b" : "#ffffff",
+        "text-halo-color": light ? "#ffffff" : "#010208", "text-halo-width": neon ? 3 : 2
       }
     });
   }

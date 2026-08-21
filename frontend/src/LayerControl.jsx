@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const BASEMAPS = [
+  { value: "light", label: "White", detail: "Light monitoring map" },
   { value: "neon", label: "Neon", detail: "Political monitoring" },
   { value: "dark", label: "Dark", detail: "Low distraction" },
   { value: "osm", label: "OSM", detail: "Street context" },

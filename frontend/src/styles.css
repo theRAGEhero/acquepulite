@@ -1290,6 +1290,7 @@ html, body, #root {
 .basemap-option small { margin-top: 2px; color: #5f8190; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .basemap-option svg { width: 13px; color: #2dd4ff; }
 .basemap-sample { width: 30px; height: 30px; border-radius: 5px; border: 1px solid rgba(255,255,255,.12); }
+.basemap-sample.light { background: linear-gradient(145deg, #f8fafc 42%, #b9ddea 43% 49%, #fff 50% 70%, #cad4da 71% 73%, #f7fafb 74%); border-color: #b8c9d2; }
 .basemap-sample.neon { background: radial-gradient(circle at 65% 35%, #147b9d 0 8%, transparent 9%), linear-gradient(145deg, #010208 45%, #0d526a 46% 51%, #02050a 52%); }
 .basemap-sample.dark { background: linear-gradient(140deg, #182536, #070b11 55%, #26384c); }
 .basemap-sample.osm { background: linear-gradient(135deg, #d9e3d1 45%, #80bce0 46% 56%, #eef0df 57%); }
@@ -1705,6 +1706,7 @@ html, body, #root {
   background: rgba(250, 253, 255, .94);
   border-color: rgba(28, 100, 132, .24);
 }
+.app.light-ui .map-wrap .maplibregl-map { background: #f8fafc; }
 .app.light-ui .maplibregl-ctrl-group button span { filter: none; }
 .app.light-ui .maplibregl-popup-content,
 .app.light-ui .leaflet-popup-content-wrapper,

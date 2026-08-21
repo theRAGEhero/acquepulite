@@ -239,6 +239,16 @@ export default function App() {
   }, []);
   const toggleLayer = useCallback((key, value) => setLayers(previous => ({ ...previous, [key]: value })), [setLayers]);
   const toggleLevel = useCallback((key, value) => setLevelsShown(previous => ({ ...previous, [key]: value })), [setLevelsShown]);
+  const handleUiThemeChange = useCallback(theme => {
+    setUiTheme(theme);
+    if (theme === "light") setBasemap("light");
+    else setBasemap(current => current === "light" ? "neon" : current);
+  }, [setBasemap, setUiTheme]);
+  const handleBasemapChange = useCallback(nextBasemap => {
+    setBasemap(nextBasemap);
+    if (nextBasemap === "light") setUiTheme("light");
+    else if (uiTheme === "light") setUiTheme("dark");
+  }, [setBasemap, setUiTheme, uiTheme]);
   const handleStationClick = useCallback((lat, lon, station = null) => {
     setFlyTo([lat, lon, Date.now(), station?.id ? 12.5 : 11]);
     if (station?.id) {
@@ -276,6 +286,13 @@ export default function App() {
     document.documentElement.style.colorScheme = effectiveUiTheme;
   }, [effectiveUiTheme]);
 
+  useEffect(() => {
+    // Migrate persisted light-theme sessions created before the white map existed.
+    if (uiTheme === "light" && basemap !== "light") setBasemap("light");
+    // This is intentionally a one-time compatibility pass; later map choices remain user-controlled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const mapProps = {
     rivers: visibleRivers, segments: visibleSegments, stations: layers.stations ? visibleStations : null,
     eeaSites: layers.eeaSites ? eeaSites : null,
@@ -297,9 +314,9 @@ export default function App() {
 
         <LayerControl layers={layers} onToggleLayer={toggleLayer}
           paramFilter={paramFilter} onParamChange={setParamFilter}
-          basemap={basemap} onBasemapChange={setBasemap}
+          basemap={basemap} onBasemapChange={handleBasemapChange}
           regions={regions} regionFilter={regionFilter} onRegionChange={setRegionFilter}
-          uiTheme={effectiveUiTheme} onUiThemeChange={setUiTheme}
+          uiTheme={effectiveUiTheme} onUiThemeChange={handleUiThemeChange}
           view3D={view3D} onView3DChange={setView3D}
           levelsShown={levelsShown} onToggleLevel={toggleLevel}
           sourceDrawerOpen={drawer === "sources"}
