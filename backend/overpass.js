@@ -5,11 +5,19 @@
 import { log } from "./logger.js";
 
 const OVERPASS_ENDPOINTS = [
+  "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter"
+  "https://overpass-api.de/api/interpreter"
 ];
 const endpointHealth = new Map();
+const responseCache = new Map();
+const RESPONSE_CACHE_MAX = 500;
+const RESPONSE_CACHE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function rememberResponse(query, data) {
+  if (responseCache.size >= RESPONSE_CACHE_MAX) responseCache.delete(responseCache.keys().next().value);
+  responseCache.set(query, { savedAt: Date.now(), data });
+}
 
 // OSM tag presets per category
 const CATEGORY_QUERIES = {
@@ -154,9 +162,9 @@ function endpointOrder() {
 
 async function tryOverpass(query, timeoutMs = 10000) {
   const failures = [];
-  // Two mirrors per compact query is enough redundancy without sending the
-  // same request to every free public server simultaneously.
-  for (const url of endpointOrder().slice(0, 2)) {
+  // Requests remain sequential, but every healthy configured mirror gets a
+  // chance. Previously the third mirror was never attempted on a fresh scan.
+  for (const url of endpointOrder()) {
     const startedAt = Date.now();
     try {
       log.debug("OVERPASS", `Trying ${url}`, { query_bytes: query.length });
@@ -178,6 +186,7 @@ async function tryOverpass(query, timeoutMs = 10000) {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = await res.json();
+      rememberResponse(query, data);
       endpointHealth.set(url, { cooldownUntil: 0, status: 200 });
       log.debug("OVERPASS", `Got ${data.elements?.length || 0} elements from ${url}`, {
         duration_ms: Date.now() - startedAt, query_bytes: query.length
@@ -195,6 +204,14 @@ async function tryOverpass(query, timeoutMs = 10000) {
       failures.push(failure);
       log.warn("OVERPASS", `Mirror failed: ${failure.endpoint} (${failure.reason})`, failure);
     }
+  }
+  const cached = responseCache.get(query);
+  if (cached && Date.now() - cached.savedAt <= RESPONSE_CACHE_STALE_MS) {
+    const cacheAgeMs = Date.now() - cached.savedAt;
+    log.warn("OVERPASS", "Serving the last successful response after live mirrors failed", {
+      cache_age_ms: cacheAgeMs, failures
+    });
+    return { ...cached.data, _acquepulite_cache_age_ms: cacheAgeMs };
   }
   const error = new Error(`Overpass mirrors unavailable: ${failures.map(item => `${item.endpoint} ${item.reason}`).join("; ")}`);
   error.failures = failures;
@@ -321,6 +338,7 @@ export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
     throw error;
   }
   const elements = successful.flatMap(result => result.data?.elements || []);
+  const cachedChunks = successful.filter(result => Number.isFinite(result.data?._acquepulite_cache_age_ms));
   const seen = new Set();
   const facilities = [];
   for (const el of elements) {
@@ -347,6 +365,10 @@ export async function queryFacilitiesAlongRiver(geometry, radius = 3000) {
     query_chunks: queries.length,
     successful_chunks: successful.length,
     failed_chunks: failed.length,
+    cached_chunks: cachedChunks.length,
+    oldest_cache_age_ms: cachedChunks.length
+      ? Math.max(...cachedChunks.map(result => result.data._acquepulite_cache_age_ms))
+      : null,
     partial: failed.length > 0,
     failures: failed.flatMap(result => result.error?.failures || []).slice(0, 8)
   };

@@ -29,7 +29,7 @@ export default function LayerControl({
   regions, regionFilter, onRegionChange,
   uiTheme, onUiThemeChange,
   view3D, onView3DChange, levelsShown, onToggleLevel, onOpenSources,
-  sourceDrawerOpen, metrics, updatedAt
+  onOpenDocuments, sourceDrawerOpen, metrics, updatedAt
 }) {
   const [panel, setPanel] = useState(null);
   const rootRef = useRef(null);
@@ -133,6 +133,12 @@ export default function LayerControl({
             onClick={() => { onOpenSources(); setPanel(null); }}>
             <Icon name="database" />
             <span><strong>System & data sources</strong><small>Coverage, licenses and provenance</small></span>
+            <Icon name="arrow" />
+          </button>
+          <button className="sources-menu-action"
+            onClick={() => { onOpenDocuments(); setPanel(null); }}>
+            <Icon name="documents" />
+            <span><strong>River documents</strong><small>Reports, studies and legal files per river</small></span>
             <Icon name="arrow" />
           </button>
           <div className="control-sync">Last agency sync: {updatedAt
@@ -279,6 +285,7 @@ function Icon({ name }) {
     layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
     filter: <><path d="M4 5h16M7 12h10M10 19h4"/></>,
     database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
+    documents: <><path d="M7 3h7l4 4v14H7V3Z"/><path d="M14 3v4h4M10 12h5M10 16h5"/></>,
     arrow: <><path d="M5 12h14M14 7l5 5-5 5"/></>,
     check: <><path d="m5 12 4 4L19 6"/></>,
     minus: <><path d="M6 12h12"/></>,

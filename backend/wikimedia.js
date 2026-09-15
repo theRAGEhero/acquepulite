@@ -494,6 +494,72 @@ async function buildNearbyPopulationContext(river, cacheKey) {
   return result;
 }
 
+export async function getRiverImage(river) {
+  const cacheKey = `image:${river.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) return cached.value;
+  const searchName = river.name.replace(/\b(sublacuale|prelacuale|sopralacuale)\b/gi, "").trim();
+  const result = await buildRiverImage(river, searchName);
+  // Only cache successful lookups: a transient Wikimedia outage or rate limit
+  // must not pin "no image" for 24 hours.
+  if (result.available) cache.set(cacheKey, { savedAt: Date.now(), value: result });
+  return result;
+}
+
+async function buildRiverImage(river, searchName) {
+  const fallback = { available: false, image_url: null, thumb_url: null, page_url: null, license: null, artist: null };
+  try {
+    const params = new URLSearchParams({
+      action: "query", generator: "search", gsrsearch: `${searchName} fiume`,
+      gsrnamespace: "6", gsrlimit: "12", prop: "imageinfo",
+      iiprop: "url|extmetadata", iiurlwidth: "640", format: "json", origin: "*"
+    });
+    const data = await fetchJson(`https://commons.wikimedia.org/w/api.php?${params}`);
+    const pages = Object.values(data?.query?.pages || {});
+    const normalized = normalizeName(searchName);
+    const namePattern = normalized.length >= 4
+      ? new RegExp(normalized, "i")
+      : new RegExp(`(^|[^a-z])${normalized}([^a-z]|$)`, "i");
+    const candidates = pages
+      .map(page => {
+        const info = page.imageinfo?.[0];
+        if (!info) return null;
+        const metadata = info.extmetadata || {};
+        const title = String(page.title || "");
+        const description = String(metadata.ImageDescription?.value || "");
+        const titleScore = namePattern.test(title) ? 2 : 0;
+        const descriptionScore = namePattern.test(description) ? 1 : 0;
+        const waterScore = WATER_WORDS.test(description) ? 1 : 0;
+        const width = Number(info.width) || 0;
+        const height = Number(info.height) || 0;
+        const landscape = width >= height;
+        const sizeScore = width >= 400 && height >= 200 ? 1 : 0;
+        return {
+          page, info, metadata,
+          score: titleScore * 3 + descriptionScore * 2 + waterScore + sizeScore + (landscape ? 1 : 0)
+        };
+      })
+      .filter(item => item && item.score >= 3)
+      .sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    if (!best) return fallback;
+    const license = best.metadata.LicenseShortName?.value || null;
+    const artist = String(best.metadata.Artist?.value || "").replace(/<[^>]+>/g, "").trim() || null;
+    return {
+      available: true,
+      image_url: best.info.url,
+      thumb_url: best.info.thumburl || best.info.url,
+      page_url: best.info.descriptionurl || null,
+      license,
+      artist,
+      source: "Wikimedia Commons",
+      source_url: "https://commons.wikimedia.org/"
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export async function getRiverKnowledge(river) {
   const cached = cache.get(river.id);
   if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) return cached.value;
