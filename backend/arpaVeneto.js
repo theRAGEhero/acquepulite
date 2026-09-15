@@ -1,4 +1,5 @@
 import { log } from "./logger.js";
+import { ECOLOGICAL_SCORE, combineScores, scoreToWfd } from "./wfdClassification.js";
 
 export const VENETO_SOURCE_PAGE = "https://www.arpa.veneto.it/dati-ambientali/open-data/idrosfera/corsi-dacqua/limeco-livello-di-inquinamento-espresso-dai-macrodescrittori-per-lo-stato-ecologico-dei-corsi-dacqua";
 const CSV_URL = "https://www.arpa.veneto.it/dati-ambientali/open-data/file-e-allegati/acque-interne/fiumi_limeco_serie_storica_opendata.csv/@@download/file";
@@ -52,8 +53,6 @@ function limecoClass(rawClass, rawScore) {
   return "Cattivo";
 }
 
-const STATUS_SCORE = { Elevato: 0.05, Buono: 0.2, Sufficiente: 0.5, Scarso: 0.75, Cattivo: 0.95 };
-
 export async function loadArpaVeneto() {
   const response = await fetch(CSV_URL, { headers: { "User-Agent": "RiverWatch-Italy/1.0" } });
   if (!response.ok) throw new Error(`ARPA Veneto CSV ${response.status}`);
@@ -97,11 +96,11 @@ export async function loadArpaVeneto() {
       comune: indexes.basin >= 0 ? item.row[indexes.basin] || null : null,
       status: item.status, ecological: null, chemical: null,
       indicator: "LIMeco", indicator_year: item.year || null,
-      score: STATUS_SCORE[item.status], source_url: VENETO_SOURCE_PAGE
+      score: ECOLOGICAL_SCORE[item.status] ?? null, source_url: VENETO_SOURCE_PAGE
     });
   }
   const rivers = [...grouped.entries()].map(([key, value]) => {
-    const worst = Math.max(...value.stretches.map(stretch => stretch.score));
+    const worst = combineScores(value.stretches.map(stretch => stretch.score));
     return {
       id: `arpav_${key.replace(/[^a-z0-9]+/g, "_")}`, name: value.name,
       region: "Veneto (ARPAV)", source: "ARPA Veneto (ARPAV)",
@@ -109,7 +108,7 @@ export async function loadArpaVeneto() {
       source_license_url: "https://creativecommons.org/licenses/by/4.0/",
       source_period: "LIMeco series 2010–2025; latest observation per water body",
       assessment_type: "LIMeco nutrient/oxygen indicator (not complete WFD status)",
-      wfd_status: worst >= 0.85 ? "bad" : worst >= 0.65 ? "poor" : worst >= 0.4 ? "moderate" : "good",
+      wfd_status: scoreToWfd(worst),
       stretches: value.stretches, geom: null, official_only: true
     };
   });

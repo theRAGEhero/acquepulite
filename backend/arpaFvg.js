@@ -1,10 +1,9 @@
 import { log } from "./logger.js";
+import { ECOLOGICAL_SCORE, chemicalConstraint, combineScores, scoreToWfd } from "./wfdClassification.js";
 
 export const FVG_SOURCE_URL = "https://www.arpa.fvg.it/temi/temi/acqua/sezioni-principali/acque-interne/qualita-delle-acque/";
 export const FVG_LICENSE_URL = "https://www.arpa.fvg.it/link-footer/link-in-basso-cookie-privacy/note-legali/";
 
-const ECO_SCORE = { Elevato: 0.05, Buono: 0.2, Sufficiente: 0.5, Scarso: 0.75, Cattivo: 0.95 };
-const CHEMICAL_SCORE = { Buono: 0.2, "Non buono": 0.85 };
 
 function decodeHtml(value) {
   return String(value || "")
@@ -39,15 +38,6 @@ function slug(value) {
     .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
-function scoreToWfd(score) {
-  if (!Number.isFinite(score)) return null;
-  if (score >= 0.85) return "bad";
-  if (score >= 0.65) return "poor";
-  if (score >= 0.4) return "moderate";
-  if (score >= 0.1) return "good";
-  return "high";
-}
-
 export function parseFvgWaterBodies(html) {
   const bodies = [];
   for (const rowMatch of String(html || "").matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -61,8 +51,11 @@ export function parseFvgWaterBodies(html) {
     const waterBodyCode = decodeHtml(cells[5]);
     const ecological = status(ecologicalRaw);
     const chemical = status(chemicalRaw, true);
-    const scores = [ECO_SCORE[ecological], CHEMICAL_SCORE[chemical]].filter(Number.isFinite);
-    if (!river || !waterBodyCode || !scores.length) continue;
+    const scores = [ECOLOGICAL_SCORE[ecological], chemicalConstraint(chemical)].filter(Number.isFinite);
+    // Keep the body whenever either element is classified. A body known only to
+    // have compliant chemistry has no overall class, but dropping it would lose
+    // a real published fact and silently shrink coverage.
+    if (!river || !waterBodyCode || (!ecological && !chemical)) continue;
     const href = cells[0].match(/href=["']([^"']+)["']/i)?.[1] || null;
     bodies.push({
       regionalCode,
@@ -74,7 +67,7 @@ export function parseFvgWaterBodies(html) {
       chemicalRaw: chemicalRaw || null,
       waterBodyCode,
       reportUrl: href ? new URL(href, FVG_SOURCE_URL).href : null,
-      score: Math.max(...scores)
+      score: combineScores(scores)
     });
   }
   return bodies;
@@ -102,7 +95,7 @@ export function buildFvgRivers(bodies) {
     });
   }
   return [...grouped.values()].map(value => {
-    const worst = Math.max(...value.stretches.map(stretch => stretch.score).filter(Number.isFinite));
+    const worst = combineScores(value.stretches.map(stretch => stretch.score));
     return {
       id: `arpafvg_${slug(value.name)}`,
       name: value.name,

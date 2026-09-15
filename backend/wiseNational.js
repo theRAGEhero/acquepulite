@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { combineLineGeometries } from "./hydrography.js";
 import { log } from "./logger.js";
+import {
+  WISE_ECOLOGICAL_CODE, WISE_CHEMICAL_CODE, ECOLOGICAL_SCORE, CHEMICAL_SCORE,
+  combineScores, scoreToWfd, worstWfd, chemicalConstraint
+} from "./wfdClassification.js";
 
 export const WISE_STATUS_URL = "https://water.discomap.eea.europa.eu/arcgis/rest/services/WISE_WFD/WFD2022_SurfaceWaterBody_WM/MapServer/2";
 export const WISE_LICENSE_URL = "https://www.eea.europa.eu/en/legal-notice";
@@ -37,17 +41,14 @@ const REGION_BY_NUTS = new Map(ITALIAN_REGIONS.flatMap(region =>
   region.nuts.map(nuts => [nuts, region])));
 const REGION_BY_CODE = new Map(ITALIAN_REGIONS.map(region => [region.code, region]));
 
-const ECOLOGICAL = {
-  "1": { label: "Elevato", wfd: "high", score: 0.05 },
-  "2": { label: "Buono", wfd: "good", score: 0.2 },
-  "3": { label: "Sufficiente", wfd: "moderate", score: 0.5 },
-  "4": { label: "Scarso", wfd: "poor", score: 0.75 },
-  "5": { label: "Cattivo", wfd: "bad", score: 0.95 }
-};
-const CHEMICAL = {
-  "2": { label: "Buono", score: 0.2 },
-  "3": { label: "Non buono", score: 0.85 }
-};
+// Built from the shared classification tables so WISE cannot drift from the
+// regional adapters: same labels, same scores, same score->class function.
+const ECOLOGICAL = Object.fromEntries(Object.entries(WISE_ECOLOGICAL_CODE).map(
+  ([code, label]) => [code, { label, wfd: scoreToWfd(ECOLOGICAL_SCORE[label]), score: ECOLOGICAL_SCORE[label] }]
+));
+const CHEMICAL = Object.fromEntries(Object.entries(WISE_CHEMICAL_CODE).map(
+  ([code, label]) => [code, { label, score: CHEMICAL_SCORE[label] }]
+));
 
 function normalizedCode(value) {
   return String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
@@ -121,11 +122,8 @@ export function regionCodesForGeometry(geometry, regionFeatures) {
 export function normalizeWiseStatus(record) {
   const ecological = ECOLOGICAL[String(record.swEcologicalStatusOrPotentialValue || "").trim()] || null;
   const chemical = CHEMICAL[String(record.swChemicalStatusValue || "").trim()] || null;
-  const scores = [ecological?.score, chemical?.score].filter(Number.isFinite);
-  const score = scores.length ? Math.max(...scores) : null;
-  const wfd = score == null ? null : score >= 0.85 ? "bad" : score >= 0.65 ? "poor"
-    : score >= 0.4 ? "moderate" : score >= 0.1 ? "good" : "high";
-  return { ecological, chemical, score, wfd };
+  const score = combineScores([ecological?.score, chemicalConstraint(chemical?.label)]);
+  return { ecological, chemical, score, wfd: scoreToWfd(score) };
 }
 
 function loadSnapshots() {
@@ -189,8 +187,7 @@ export function loadWiseNationalRivers(catalog, excludedRegionCodes = new Set())
       swEcologicalStatusOrPotentialValue: Object.entries(ECOLOGICAL).find(([, value]) => value.label === stretch.ecological)?.[0],
       swChemicalStatusValue: Object.entries(CHEMICAL).find(([, value]) => value.label === stretch.chemical)?.[0]
     }).wfd).filter(Boolean);
-    const rank = { high: 0, good: 1, moderate: 2, poor: 3, bad: 4 };
-    const wfdStatus = statuses.sort((a, b) => rank[b] - rank[a])[0] || null;
+    const wfdStatus = worstWfd(statuses);
     const names = regionCodes.map(code => REGION_BY_CODE.get(code)?.name).filter(Boolean);
     const idCode = group.stretches[0]?.water_body_code || `${regionCodes.join("_")}_${normalizedName(group.name)}`;
     return {

@@ -1,14 +1,13 @@
 import { log } from "./logger.js";
 import fs from "node:fs";
 import path from "node:path";
+import { ECOLOGICAL_SCORE, chemicalConstraint, combineScores, scoreToWfd } from "./wfdClassification.js";
 
 export const LAZIO_DATASET_URL = "https://dati.lazio.it/dataset/stato-ecologico-e-stato-chimico-dei-corpi-idrici-di-acque-fluviali";
 export const LAZIO_CSV_URL = "https://dati.lazio.it/dataset/1a5e3f3a-5dc1-43c4-adae-6d4451df2d56/resource/fccf2de5-3290-41da-a803-4f5a36e9d6ce/download/stato-ecologico-e-chimico-fiumi-2021-2023.csv";
 export const LAZIO_API_URL = "https://dati.lazio.it/api/3/action/datastore_search?resource_id=fccf2de5-3290-41da-a803-4f5a36e9d6ce&limit=500";
 const LAZIO_SNAPSHOT_FILE = path.join(import.meta.dirname, "data", "regional", "arpa-lazio-fiumi-2021-2023.csv");
 
-const ECO_SCORE = { Elevato: 0.05, Buono: 0.2, Sufficiente: 0.5, Scarso: 0.75, Cattivo: 0.95 };
-const CHEMICAL_SCORE = { Buono: 0.2, "Non buono": 0.85 };
 
 function parseDelimited(text) {
   const rows = [];
@@ -48,7 +47,7 @@ function normalizedStatus(value, chemical = false) {
 function bodyFromValues({ name, code, station, type, monitoring, ecological: ecologicalRaw, chemical: chemicalRaw }) {
   const ecological = normalizedStatus(ecologicalRaw);
   const chemical = normalizedStatus(chemicalRaw, true);
-  const scores = [ECO_SCORE[ecological], CHEMICAL_SCORE[chemical]].filter(Number.isFinite);
+  const scores = [ECOLOGICAL_SCORE[ecological], chemicalConstraint(chemical)].filter(Number.isFinite);
   return {
     name: String(name || "").trim(),
     waterBodyCode: String(code || "").trim(),
@@ -59,7 +58,7 @@ function bodyFromValues({ name, code, station, type, monitoring, ecological: eco
     ecologicalRaw: String(ecologicalRaw || "").trim() || null,
     chemical,
     chemicalRaw: String(chemicalRaw || "").trim() || null,
-    score: scores.length ? Math.max(...scores) : null
+    score: combineScores(scores)
   };
 }
 
@@ -70,15 +69,6 @@ function riverName(waterBodyName) {
 function slug(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
-
-function scoreToWfd(score) {
-  if (!Number.isFinite(score)) return null;
-  if (score >= 0.85) return "bad";
-  if (score >= 0.65) return "poor";
-  if (score >= 0.4) return "moderate";
-  if (score >= 0.1) return "good";
-  return "high";
 }
 
 export function parseLazioCsv(text) {
@@ -106,7 +96,7 @@ export function parseLazioCsv(text) {
     monitoring: row[columns.monitoring],
     ecological: row[columns.ecological],
     chemical: row[columns.chemical]
-  })).filter(body => body.name && body.waterBodyCode && Number.isFinite(body.score));
+  })).filter(body => body.name && body.waterBodyCode && (body.ecological || body.chemical));
 }
 
 export function parseLazioRecords(records) {
@@ -118,7 +108,7 @@ export function parseLazioRecords(records) {
     monitoring: record["Tipologia Monitoraggio"],
     ecological: record["Stato/Potenziale Ecologico triennio 2021-2023"],
     chemical: record["Stato Chimico triennio 2021-2023"]
-  })).filter(body => body.name && body.waterBodyCode && Number.isFinite(body.score));
+  })).filter(body => body.name && body.waterBodyCode && (body.ecological || body.chemical));
 }
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -166,7 +156,7 @@ export function buildLazioRivers(bodies) {
     });
   }
   return [...grouped.values()].map(value => {
-    const worst = Math.max(...value.stretches.map(stretch => stretch.score).filter(Number.isFinite));
+    const worst = combineScores(value.stretches.map(stretch => stretch.score));
     return {
       id: `arpalazio_${slug(value.name)}`,
       name: value.name,

@@ -8,19 +8,9 @@
 // triennium (2022-2024).
 
 import { log } from "./logger.js";
-
-const STATUS_SCORE = {
-  "Elevato": 0.05,
-  "Buono": 0.2,
-  "Sufficiente": 0.45,
-  "Scarso": 0.7,
-  "Cattivo": 0.95
-};
-
-const CHEMICAL_SCORE = {
-  "Buono": 0.2,
-  "Non buono": 0.75
-};
+import {
+  ECOLOGICAL_SCORE as STATUS_SCORE, chemicalConstraint, combineScores, scoreToWfd
+} from "./wfdClassification.js";
 
 const CSV_URLS = {
   arno: "https://www.arpat.toscana.it/app/uploads/datiemappe/dati/bacino-arno-stato-ecologico-e-chimico-delle-acque-superficiali/bacino-arno-2010-2024.csv",
@@ -108,8 +98,7 @@ export async function loadArpatToscana() {
         const chemRaw = (row[chemIdx] || "").trim().replace(/\s*\*+.*$/, "").trim();
         const eco = ecoRaw;
         const chem = chemRaw;
-        const componentScores = [STATUS_SCORE[eco], CHEMICAL_SCORE[chem]].filter(value => value != null);
-        const score = componentScores.length ? Math.max(...componentScores) : null;
+        const score = combineScores([STATUS_SCORE[eco], chemicalConstraint(chem)]);
         if (score == null) continue;
 
         // Main watercourse = first part of sottobacino (e.g. "Arno-Arno" → "Arno")
@@ -142,7 +131,7 @@ export async function loadArpatToscana() {
   for (const [key, v] of rivers) {
     if (v.stretches.length === 0) continue;
     const first = v.stretches[0];
-    const worstScore = Math.max(...v.stretches.map(stretch => stretch.score).filter(Number.isFinite));
+    const worstScore = combineScores(v.stretches.map(stretch => stretch.score));
     result.push({
       id: "arpat_" + key,
       name: v.name,
@@ -160,15 +149,6 @@ export async function loadArpatToscana() {
   }
   log.info(`ARPAT`, `Loaded ${result.length} rivers with real Toscana status data`);
   return result;
-}
-
-function scoreToWfd(score) {
-  if (!Number.isFinite(score)) return null;
-  if (score >= 0.85) return "bad";
-  if (score >= 0.65) return "poor";
-  if (score >= 0.4) return "moderate";
-  if (score >= 0.1) return "good";
-  return "high";
 }
 
 export function arpatRiverScore(river, index) {

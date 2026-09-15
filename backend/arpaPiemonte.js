@@ -1,13 +1,8 @@
 import { log } from "./logger.js";
+import { ecologicalScore, chemicalConstraint, combineScores, scoreToWfd } from "./wfdClassification.js";
 
 export const PIEMONTE_SOURCE_URL = "https://webgis.arpa.piemonte.it/ags/rest/services/acqua/Classificazione_ambientale_CI_PdGPO/MapServer/2";
 const QUERY_URL = `${PIEMONTE_SOURCE_URL}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`;
-
-const ECO_SCORE = { Elevato: 0.05, Buono: 0.2, Sufficiente: 0.5, Scarso: 0.75, Cattivo: 0.95 };
-
-function chemicalScore(value) {
-  return /^non\s*buono$/i.test(value || "") ? 0.85 : /^buono$/i.test(value || "") ? 0.2 : null;
-}
 
 function mergeGeometry(features) {
   const lines = features.flatMap(feature => feature.geometry?.type === "MultiLineString"
@@ -30,16 +25,15 @@ export async function loadArpaPiemonte() {
     if (!grouped.has(key)) grouped.set(key, { name, features: [], stretches: [] });
     const ecological = String(properties.P03618_1419_FI || "").trim() || null;
     const chemical = String(properties.P03477_1419_FI || "").trim() || null;
-    const ecoScore = ECO_SCORE[ecological] ?? null;
-    const chemScore = chemicalScore(chemical);
-    const scores = [ecoScore, chemScore].filter(value => value != null);
+    const ecoScore = ecologicalScore(ecological);
+    const chemScore = chemicalConstraint(chemical);
     grouped.get(key).features.push(feature);
     grouped.get(key).stretches.push({
       name: `${name} · ${properties.CODICE_CI || properties.WISE || "corpo idrico"}`,
       water_body_code: properties.WISE || properties.CODICE_CI || null,
       comune: null, status: ecological || chemical || "Non classificato",
       ecological, chemical,
-      score: scores.length ? Math.max(...scores) : null,
+      score: combineScores([ecoScore, chemScore]),
       source_url: PIEMONTE_SOURCE_URL,
       geometry: feature.geometry, geometry_source: "ARPA Piemonte official ArcGIS layer",
       source_feature_id: properties.CODICE_CI || properties.WISE || null,
@@ -47,8 +41,7 @@ export async function loadArpaPiemonte() {
     });
   }
   const rivers = [...grouped.entries()].map(([key, value]) => {
-    const scores = value.stretches.map(stretch => stretch.score).filter(Number.isFinite);
-    const score = scores.length ? Math.max(...scores) : null;
+    const score = combineScores(value.stretches.map(stretch => stretch.score));
     return {
       id: `arpap_${key.replace(/[^a-z0-9]+/g, "_")}`, name: value.name,
       region: "Piemonte (ARPA Piemonte)", source: "ARPA Piemonte",
@@ -57,7 +50,7 @@ export async function loadArpaPiemonte() {
       source_license_url: "https://webgis.arpa.piemonte.it/ags/rest/services/acqua/Classificazione_ambientale_CI_PdGPO/MapServer",
       source_period: "PdG Po 2021 classification (ecological/chemical status 2014–2019)",
       assessment_type: "WFD ecological + chemical status",
-      wfd_status: score >= 0.85 ? "bad" : score >= 0.65 ? "poor" : score >= 0.4 ? "moderate" : "good",
+      wfd_status: scoreToWfd(score),
       stretches: value.stretches, geom: mergeGeometry(value.features), official_only: true
     };
   });
