@@ -5,10 +5,16 @@ import RiverPanel from "./RiverPanel.jsx";
 import LayerControl from "./LayerControl.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import DataSourcesPanel from "./DataSourcesPanel.jsx";
+import DocumentsPage from "./DocumentsPage.jsx";
 import { usePersistentState } from "./usePersistentState.js";
 import { apiFetch, fetchJson } from "./telemetry.js";
 
+function readRoute() {
+  return window.location.hash.replace(/^#\/?/, "").split("?")[0].toLowerCase();
+}
+
 export default function App() {
+  const [route, setRoute] = useState(readRoute);
   const [rivers, setRivers] = useState(null);
   const [segments, setSegments] = useState(null);
   const [stations, setStations] = useState(null);
@@ -287,11 +293,37 @@ export default function App() {
   }, [effectiveUiTheme]);
 
   useEffect(() => {
+    const onHashChange = () => setRoute(readRoute());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const openDocuments = useCallback(() => {
+    window.location.hash = "#/documents";
+    setDrawer(null);
+  }, []);
+
+  const closeDocuments = useCallback(() => {
+    window.location.hash = "";
+  }, []);
+
+  useEffect(() => {
     // Migrate persisted light-theme sessions created before the white map existed.
     if (uiTheme === "light" && basemap !== "light") setBasemap("light");
     // This is intentionally a one-time compatibility pass; later map choices remain user-controlled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Every hook must run before this route branch. Returning earlier changes the
+  // hook count between renders and React aborts with "Rendered fewer hooks than
+  // expected", which white-screens the whole app on the documents route.
+  if (route === "documents") {
+    return (
+      <div className={`app ${neonMode ? "neon-mode" : ""} ${effectiveUiTheme === "light" ? "light-ui" : "dark-ui"}`}>
+        <DocumentsPage onBack={closeDocuments} />
+      </div>
+    );
+  }
 
   const mapProps = {
     rivers: visibleRivers, segments: visibleSegments, stations: layers.stations ? visibleStations : null,
@@ -321,6 +353,7 @@ export default function App() {
           levelsShown={levelsShown} onToggleLevel={toggleLevel}
           sourceDrawerOpen={drawer === "sources"}
           metrics={metrics} updatedAt={dataSources?.updated_at}
+          onOpenDocuments={openDocuments}
           onOpenSources={() => {
             setDrawer(current => current === "sources" ? null : "sources");
             setDrawerFullscreen(false);

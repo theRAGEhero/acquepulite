@@ -120,6 +120,7 @@ export default function MapView3D({
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const activeBasemapRef = useRef(null);
+  const activeStyleUrlRef = useRef(null);
   const refs = useRef({ handlers: [] });
   refs.current = {
     ...refs.current, rivers, segments, stations, eeaSites, riverFacilities, showSegments, showNetwork, showLabels,
@@ -134,6 +135,7 @@ export default function MapView3D({
       center: [11.0, 43.5], zoom: 5.5, pitch: flat ? 0 : 50, bearing: flat ? 0 : -20, antialias: true
     });
     activeBasemapRef.current = basemap;
+    activeStyleUrlRef.current = STYLES[basemap] || STYLES.liberty;
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl(), "bottom-left");
     mapRef.current = map;
@@ -160,10 +162,17 @@ export default function MapView3D({
     const map = mapRef.current;
     if (!map || activeBasemapRef.current === basemap) return;
     activeBasemapRef.current = basemap;
-    // This is safe even if the previous style is still loading. The
-    // persistent style.load listener above refreshes rivers with the latest
-    // React data as soon as the replacement basemap is ready.
-    map.setStyle(STYLES[basemap] || STYLES.liberty);
+    // If the target style URL is the same as the one currently loaded
+    // (e.g. neon -> dark, light -> osm), setStyle would be a no-op and
+    // style.load would not fire, leaving overlays stale. Append a
+    // cache-buster so MapLibre re-fetches the (tiny) style JSON and
+    // style.load fires normally; tiles stay cached by the browser.
+    const newUrl = STYLES[basemap] || STYLES.liberty;
+    const url = newUrl === activeStyleUrlRef.current
+      ? `${newUrl}${newUrl.includes("?") ? "&" : "?"}_=${Date.now()}`
+      : newUrl;
+    map.setStyle(url);
+    activeStyleUrlRef.current = newUrl;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap]);
 
@@ -381,9 +390,10 @@ export default function MapView3D({
       map.getCanvas().style.cursor = "pointer";
       const p = e.features[0].properties;
       popup.setLngLat(e.lngLat).setHTML(
-        `<b>${p.river_name}</b><br/>Tratta ${p.segment_index}<br/>Inquinamento: ${pollutionLabel(p.pollution_score)}` +
-        (p.from_station ? `<br/>Da: ${p.from_station}` : "") +
-        (p.to_station ? `<br/>A: ${p.to_station}` : "")
+        `<b>${escapeHtml(p.river_name)}</b><br/>Tratta ${escapeHtml(p.segment_index)}` +
+        `<br/>Inquinamento: ${escapeHtml(pollutionLabel(p.pollution_score))}` +
+        (p.from_station ? `<br/>Da: ${escapeHtml(p.from_station)}` : "") +
+        (p.to_station ? `<br/>A: ${escapeHtml(p.to_station)}` : "")
       ).addTo(map);
     });
     addEvent(map, "mouseleave", "segments", () => { map.getCanvas().style.cursor = ""; });
@@ -483,7 +493,7 @@ export default function MapView3D({
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, offset: 15 });
     addEvent(map, "mouseenter", "stations", (e) => {
       map.getCanvas().style.cursor = "pointer";
-      popup.setLngLat(e.lngLat).setHTML(`<b>${e.features[0].properties.name}</b>`).addTo(map);
+      popup.setLngLat(e.lngLat).setHTML(`<b>${escapeHtml(e.features[0].properties.name)}</b>`).addTo(map);
     });
     addEvent(map, "mouseleave", "stations", () => { map.getCanvas().style.cursor = ""; });
     addEvent(map, "click", "stations", (e) => {
@@ -515,7 +525,9 @@ export default function MapView3D({
     addEvent(map, "mouseenter", "eea-sites", (e) => {
       map.getCanvas().style.cursor = "pointer";
       const p = e.features[0].properties;
-      popup.setLngLat(e.lngLat).setHTML(`<b>${p.name}</b><br/>${p.sector || "Industrial site"}<br/>${p.city || ""}`).addTo(map);
+      popup.setLngLat(e.lngLat).setHTML(
+        `<b>${escapeHtml(p.name)}</b><br/>${escapeHtml(p.sector || "Industrial site")}<br/>${escapeHtml(p.city || "")}`
+      ).addTo(map);
     });
     addEvent(map, "mouseleave", "eea-sites", () => { map.getCanvas().style.cursor = ""; });
   }

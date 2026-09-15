@@ -132,7 +132,7 @@ export default function RiverPanel({
 
       {river.national_baseline && river.region_source_url && (
         <div className="meta" style={{ marginTop: 4 }}>
-          Regional assignment: <a className="source-link" href={river.region_source_url} target="_blank" rel="noreferrer">Eurostat GISCO NUTS 2024 â†—</a>
+          Regional assignment: <a className="source-link" href={river.region_source_url} target="_blank" rel="noreferrer">Eurostat GISCO NUTS 2024 ↗</a>
         </div>
       )}
 
@@ -255,8 +255,8 @@ export default function RiverPanel({
                 {(s.ecological_assessment_year || s.chemical_assessment_year) && (
                   <div className="water-body-location">
                     Assessment period: {s.ecological_assessment_year || s.chemical_assessment_year}
-                    {s.ecological_confidence && <> Â· ecological confidence: {s.ecological_confidence}</>}
-                    {s.chemical_confidence && <> Â· chemical confidence: {s.chemical_confidence}</>}
+                    {s.ecological_confidence && <> · ecological confidence: {s.ecological_confidence}</>}
+                    {s.chemical_confidence && <> · chemical confidence: {s.chemical_confidence}</>}
                   </div>
                 )}
                 <div className="status-components">
@@ -363,14 +363,14 @@ function RiverCompanies({ data, loading, error, onCompanyClick, onRetry }) {
         <span className={data.eea_status === "unavailable" ? "unavailable" : "complete"}>
           EEA registry · {data.eea_status === "unavailable" ? "unavailable" : `${data.eea_count} records`}
         </span>
-        <span className={data.osm_status === "unavailable" ? "unavailable" : data.osm_status === "partial" ? "deferred" : data.osm_status === "loading" ? "loading" : data.osm_status === "deferred" ? "deferred" : "complete"}
+        <span className={data.osm_status === "unavailable" ? "unavailable" : ["partial", "cached", "deferred"].includes(data.osm_status) ? "deferred" : data.osm_status === "loading" ? "loading" : "complete"}
           title={data.osm_skip_reason || undefined}>
-          OSM enrichment · {data.osm_status === "unavailable" ? "temporarily unavailable" : data.osm_status === "partial" ? `partial · ${data.osm_count} records` : data.osm_status === "loading" ? "checking" : data.osm_status === "deferred" ? "deferred · strong EEA coverage" : `${data.osm_count} records`}
+          OSM enrichment · {data.osm_status === "unavailable" ? "temporarily unavailable" : data.osm_status === "partial" ? `partial · ${data.osm_count} records` : data.osm_status === "cached" ? `cached · ${data.osm_count} records` : data.osm_status === "loading" ? "checking" : data.osm_status === "deferred" ? "deferred · strong EEA coverage" : `${data.osm_count} records`}
         </span>
       </div>}
-      {data?.warning && (data.count === 0 || data.eea_status === "unavailable" || data.osm_status === "partial") &&
-        <div className="facility-warning partial"><strong>Partial coverage</strong>{data.warning}
-          {(data.osm_status === "unavailable" || data.osm_status === "partial") && onRetry &&
+      {data?.warning && (data.count === 0 || data.eea_status === "unavailable" || ["partial", "cached"].includes(data.osm_status)) &&
+        <div className="facility-warning partial"><strong>{data.eea_count > 0 && data.osm_status === "unavailable" ? "Official registry available" : "Coverage notice"}</strong>{data.warning}
+          {["unavailable", "partial", "cached"].includes(data.osm_status) && onRetry &&
             <button className="show-companies" onClick={onRetry} disabled={loading}>Retry OSM scan</button>}
         </div>}
       {data && data.count === 0 && !loading && data.osm_status !== "unavailable" &&
