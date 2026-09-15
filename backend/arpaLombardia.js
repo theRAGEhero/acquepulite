@@ -26,87 +26,6 @@ const PARAM_MAP = {
   "Nitrati": { code: "NO3ALT", name: "Nitrates (NO3-)", unit: "mg/L", legal_limit: 10 }
 };
 
-// Mock geometries (approximate) keyed by basin id — these are not from ARPA
-// (Socrata dataset has station points, not river LineStrings).
-// When a basin is not in this map, a polyline is derived from station points.
-const BASIN_GEOMETRIES = {
-  LAMBRO: [
-    [9.27, 45.88], [9.26, 45.82], [9.24, 45.77], [9.24, 45.72],
-    [9.29, 45.65], [9.27, 45.58], [9.27, 45.51], [9.25, 45.44],
-    [9.27, 45.37], [9.34, 45.31], [9.41, 45.25], [9.48, 45.23],
-    [9.53, 45.17]
-  ],
-  "OLONA-LAMBRO MERIDIONALE": [
-    [8.85, 45.78], [8.86, 45.75], [8.87, 45.72], [8.88, 45.69], [8.89, 45.66],
-    [8.90, 45.63], [8.91, 45.60], [8.92, 45.57], [8.93, 45.54], [8.95, 45.51],
-    [8.98, 45.48], [9.02, 45.45], [9.06, 45.42], [9.10, 45.39], [9.14, 45.36],
-    [9.18, 45.33], [9.22, 45.30], [9.26, 45.27], [9.30, 45.24], [9.34, 45.21],
-    [9.38, 45.18], [9.42, 45.15], [9.46, 45.12], [9.50, 45.10], [9.54, 45.08],
-    [9.58, 45.06], [9.62, 45.04], [9.66, 45.02], [9.70, 45.00], [9.74, 44.98],
-    [9.78, 44.96], [9.82, 44.94], [9.86, 44.92], [9.90, 44.90], [9.94, 44.88]
-  ],
-  Po: [
-    [7.05, 44.68], [7.35, 44.72], [7.65, 44.85], [8.00, 44.90],
-    [8.45, 44.97], [8.85, 45.07], [9.20, 45.13], [9.55, 45.18],
-    [9.95, 45.22], [10.35, 45.25], [10.75, 45.20], [11.15, 45.10],
-    [11.55, 45.00], [11.95, 44.95], [12.35, 44.95], [12.60, 44.97]
-  ],
-  "ADDA SUBLACUALE": [
-    [9.5, 45.7], [9.45, 45.6], [9.4, 45.5], [9.35, 45.4],
-    [9.3, 45.3], [9.25, 45.2], [9.2, 45.1], [9.15, 45.0]
-  ],
-  "ADDA PRELACUALE": [
-    [10.1, 46.25], [10.15, 46.1], [10.2, 45.95], [10.25, 45.8],
-    [10.3, 45.65], [10.4, 45.5], [10.5, 45.4], [9.5, 45.7]
-  ],
-  BREMBO: [
-    [9.7, 46.0], [9.65, 45.85], [9.6, 45.7], [9.55, 45.55],
-    [9.5, 45.4], [9.45, 45.3], [9.4, 45.5]
-  ],
-  SERIO: [
-    [9.8, 46.1], [9.75, 45.95], [9.7, 45.8], [9.65, 45.65],
-    [9.6, 45.5], [9.55, 45.4], [9.5, 45.3]
-  ],
-  MELLA: [
-    [10.2, 46.1], [10.15, 45.95], [10.1, 45.8], [10.05, 45.65],
-    [10.0, 45.5], [9.95, 45.4], [10.1, 45.3]
-  ],
-  MERA: [[9.3, 46.1], [9.25, 46.0], [9.2, 45.85], [9.15, 45.75]],
-  MINCIO: [
-    [10.7, 45.6], [10.65, 45.5], [10.6, 45.4], [10.55, 45.3],
-    [10.5, 45.2], [10.45, 45.1], [10.9, 45.0]
-  ],
-  "TICINO SUBLACUALE": [
-    [8.6, 45.7], [8.65, 45.6], [8.7, 45.5], [8.75, 45.4],
-    [8.8, 45.3], [8.85, 45.2], [8.9, 45.1]
-  ],
-  "OGLIO SUBLACUALE": [
-    [10.05, 45.5], [10.0, 45.4], [9.95, 45.3], [9.9, 45.2],
-    [9.85, 45.1], [10.2, 45.0]
-  ],
-  "OGLIO SOPRALACUALE": [
-    [10.1, 46.3], [10.05, 46.15], [10.0, 46.0], [9.95, 45.85],
-    [9.9, 45.7], [9.85, 45.6], [10.05, 45.5]
-  ],
-  SEVESO: [
-    [9.1, 45.7], [9.12, 45.62], [9.14, 45.54], [9.16, 45.46],
-    [9.18, 45.38], [9.2, 45.3]
-  ],
-  AGOGNA: [[8.6, 45.7], [8.65, 45.55], [8.7, 45.4], [8.75, 45.25]],
-  "CHIESE SUBLACUALE": [
-    [10.4, 45.7], [10.35, 45.6], [10.3, 45.5], [10.25, 45.4],
-    [10.2, 45.3], [10.15, 45.2]
-  ],
-  "FISSERO-TARTARO": [
-    [10.75, 45.35], [10.78, 45.32], [10.80, 45.29], [10.82, 45.26],
-    [10.84, 45.23], [10.86, 45.20], [10.88, 45.17], [10.90, 45.14],
-    [10.92, 45.11], [10.94, 45.08], [10.96, 45.05], [10.98, 45.02],
-    [11.00, 44.99], [11.02, 44.96], [11.04, 44.93], [11.06, 44.90],
-    [11.08, 44.87], [11.10, 44.84], [11.12, 44.81], [11.14, 44.78],
-    [11.16, 44.75], [11.18, 44.72], [11.20, 44.70]
-  ],
-  SPOL: [[10.0, 46.4], [10.05, 46.3], [10.1, 46.2]]
-};
 
 const BASIN_WFD = {
   LAMBRO: "poor",
@@ -184,11 +103,6 @@ async function loadBasin(basin) {
     m.get(cfg.code).push({ value: val, timestamp: ts, unit: r.um || cfg.unit });
   }
 
-  // 3) build river geometry from stations sorted by lat (north -> south)
-  const coords = stations
-    .map(s => [s.lon, s.lat])
-    .sort((a, b) => b[1] - a[1]);
-
   const riverId = basin.toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const river = {
     id: riverId,
@@ -202,10 +116,10 @@ async function loadBasin(basin) {
     source_license_url: "https://creativecommons.org/publicdomain/zero/1.0/",
     source_period: "Latest available agency measurements",
     assessment_type: "Measured parameters compared with configured environmental thresholds",
-    geom: {
-      type: "LineString",
-      coordinates: BASIN_GEOMETRIES[basin] || coords
-    }
+    // Geometry is resolved later from official WISE hydrography, falling back to
+    // OpenStreetMap; server.js sets it to null when neither matches. Never
+    // synthesise a course from station points — that is not a river line.
+    geom: null
   };
 
   return { river, stations, byStation, basin };

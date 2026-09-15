@@ -29,7 +29,11 @@ import {
 } from "./wiseNational.js";
 import { loadEeaData, hasEeaData, POLLUTANT_MAP } from "./eeaData.js";
 import { getLogStatus, getRecentLogs, log, serializeError } from "./logger.js";
-import { getNearbyPopulationContext, getRiverKnowledge } from "./wikimedia.js";
+import { getNearbyPopulationContext, getRiverKnowledge, getRiverImage } from "./wikimedia.js";
+import {
+  filterDocuments, getDocument, resolveDocumentFile, documentFacets,
+  logDocumentArchiveState, DOCUMENT_TYPES
+} from "./riverDocuments.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -743,199 +747,6 @@ function realStationMeasurements(stationId, paramFilter) {
   return out;
 }
 
-// Linear interpolation along a river's coordinates between two stations,
-// producing a smooth color gradient. Splits the river geometry into
-// sub-segments that transition from the upstream score to the downstream score.
-function interpolateSegment(coords, fromIdx, toIdx, fromScore, toScore,
-                            river, segIndex, fromStation, toStation,
-                            fromMeas, toMeas) {
-  const segCoords = coords.slice(fromIdx, toIdx + 1);
-  if (segCoords.length < 2) return null;
-  const nSubSegs = segCoords.length - 1;
-  const features = [];
-  for (let i = 0; i < nSubSegs; i++) {
-    const t = nSubSegs > 0 ? i / nSubSegs : 0;
-    const score = fromScore + (toScore - fromScore) * t;
-    features.push({
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [segCoords[i], segCoords[i + 1]]
-      },
-      properties: {
-        river_id: river.id,
-        river_name: river.name,
-        segment_index: segIndex + i,
-        sub_index: i,
-        pollution_score: Number(score.toFixed(3)),
-        color: scoreToColor(score),
-        from_station: fromStation?.name || null,
-        to_station: toStation?.name || null,
-        from_score: fromScore != null ? Number(fromScore.toFixed(3)) : null,
-        to_score: toScore != null ? Number(toScore.toFixed(3)) : null,
-        is_interpolated: i < nSubSegs, // last sub-seg reaches the station
-        has_real_data: true,
-        source: river.source || "ARPA",
-        measurements: i === 0 ? fromMeas : null // attach measurements at station point
-      }
-    });
-  }
-  return features;
-}
-
-// Decimate a coordinate array to a target max length, keeping shape.
-// Rivers have thousands of OSM points; we only need ~100-200 for
-// per-tract coloring to keep payload sizes manageable.
-function decimate(coords, maxLen = 150) {
-  if (coords.length <= maxLen) return coords;
-  const step = (coords.length - 1) / (maxLen - 1);
-  const out = [];
-  for (let i = 0; i < maxLen; i++) {
-    out.push(coords[Math.round(i * step)]);
-  }
-  return out;
-}
-
-function buildSegments(paramFilter) {
-  const features = [];
-  for (const river of store.rivers) {
-    const rawCoords = river.geom?.coordinates;
-    if (!rawCoords || rawCoords.length < 2) continue;
-    const coords = decimate(rawCoords, 150);
-
-    // --- ARPAT Toscana path: color by water-body status along the river ---
-    const arpat = store.arpatStretches.get(river.id);
-    if (arpat && arpat.stretches.length > 0) {
-      const stretches = arpat.stretches;
-      const nCoords = coords.length;
-      // Assign each stretch a portion of the polyline (evenly split)
-      for (let i = 0; i < stretches.length; i++) {
-        const s = stretches[i];
-        const startIdx = Math.floor(i * nCoords / stretches.length);
-        const endIdx = Math.max(startIdx + 1, Math.floor((i + 1) * nCoords / stretches.length));
-        // Skip tiny slices at the end
-        if (startIdx >= nCoords - 1) break;
-        const segCoords = coords.slice(startIdx, endIdx + 1);
-        for (let j = 0; j < segCoords.length - 1; j++) {
-          features.push({
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: [segCoords[j], segCoords[j + 1]] },
-            properties: {
-              river_id: river.id,
-              river_name: river.name,
-              segment_index: i,
-              sub_index: j,
-              pollution_score: s.score != null ? Number(s.score.toFixed(3)) : null,
-              color: s.score != null ? scoreToColor(s.score) : "rgb(140,165,190)",
-              water_body: s.name,
-              comune: s.comune,
-              status: s.status,
-              ecological: s.ecological || null,
-              chemical: s.chemical || null,
-              has_real_data: true,
-              source: "ARPAT Toscana"
-            }
-          });
-        }
-      }
-      continue;
-    }
-
-    const riverStations = store.stations
-      .filter(s => s.river_id === river.id)
-      .map(s => {
-        const score = realStationScore(s.id, paramFilter);
-        const meas = realStationMeasurements(s.id, paramFilter);
-        return { ...s, score, meas };
-      });
-
-    const realStations = riverStations.filter(s => s.score != null);
-
-    // --- No real data at all → skip this river entirely ---
-    if (realStations.length === 0) {
-      continue;
-    }
-
-    // --- Case 2: Real ARPA data → interpolated segments between stations ---
-    // Sort stations by position along the river (north → south by lat)
-    realStations.sort((a, b) => b.lat - a.lat);
-
-    // Find the index in coords closest to each station
-    const stationCoordIdx = realStations.map(st => {
-      let bestIdx = 0, bestDist = Infinity;
-      for (let i = 0; i < coords.length; i++) {
-        const d = (coords[i][0] - st.lon) ** 2 + (coords[i][1] - st.lat) ** 2;
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
-      }
-      return bestIdx;
-    });
-
-    let segIdx = 0;
-
-    // Segment from river source to first station (use first station's score)
-    if (stationCoordIdx[0] > 0) {
-      const subCoords = coords.slice(0, stationCoordIdx[0] + 1);
-      for (let i = 0; i < subCoords.length - 1; i++) {
-        features.push({
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: [subCoords[i], subCoords[i + 1]] },
-          properties: {
-            river_id: river.id, river_name: river.name,
-            segment_index: segIdx++, sub_index: i,
-            pollution_score: Number(realStations[0].score.toFixed(3)),
-            color: scoreToColor(realStations[0].score),
-            from_station: null, to_station: realStations[0].name,
-            from_score: null, to_score: Number(realStations[0].score.toFixed(3)),
-            has_real_data: true, is_upstream: true
-          }
-        });
-      }
-    }
-
-    // Segments between consecutive stations (interpolated)
-    for (let s = 0; s < realStations.length - 1; s++) {
-      const fromIdx = stationCoordIdx[s];
-      const toIdx = stationCoordIdx[s + 1];
-      if (toIdx <= fromIdx) continue;
-      const segFeats = interpolateSegment(
-        coords, fromIdx, toIdx,
-        realStations[s].score, realStations[s + 1].score,
-        river, segIdx,
-        realStations[s], realStations[s + 1],
-        realStations[s].meas, realStations[s + 1].meas
-      );
-      if (segFeats) {
-        features.push(...segFeats);
-        segIdx += segFeats.length;
-      }
-    }
-
-    // Segment from last station to river mouth (use last station's score)
-    const lastIdx = stationCoordIdx[stationCoordIdx.length - 1];
-    if (lastIdx < coords.length - 1) {
-      const subCoords = coords.slice(lastIdx);
-      const lastScore = realStations[realStations.length - 1].score;
-      for (let i = 0; i < subCoords.length - 1; i++) {
-        features.push({
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: [subCoords[i], subCoords[i + 1]] },
-          properties: {
-            river_id: river.id, river_name: river.name,
-            segment_index: segIdx++, sub_index: i,
-            pollution_score: Number(lastScore.toFixed(3)),
-            color: scoreToColor(lastScore),
-            from_station: realStations[realStations.length - 1].name, to_station: null,
-            from_score: Number(lastScore.toFixed(3)), to_score: null,
-            has_real_data: true, is_downstream: true
-          }
-        });
-      }
-    }
-  }
-  log.debug("SEGMENTS", `Built ${features.length} segments (${features.filter(f => f.properties.has_real_data).length} with real data)`);
-  return { type: "FeatureCollection", features };
-}
-
 function buildAccurateSegments(paramFilter, regionCode = null) {
   const features = [];
   for (const river of store.rivers) {
@@ -1125,6 +936,7 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
   let osmError = null;
   let osmQueryMeta = null;
   let osmSkippedReason = null;
+  let osmCacheFallback = false;
 
   let indexedEea = { sites: [], candidateCount: 0 };
   let eeaFacilities = [];
@@ -1173,6 +985,18 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
           query_chunks: null, successful_chunks: 0, failed_chunks: null,
           partial: false, failures: (error.failures || []).slice(0, 8)
         };
+        const previousOsm = (cached?.value?.facilities || [])
+          .filter(facility => facility.source === "OpenStreetMap");
+        if (previousOsm.length) {
+          osmFacilities = previousOsm;
+          osmCacheFallback = true;
+          osmQueryMeta.cached_chunks = cached.value.osm_query_chunks || 1;
+          osmQueryMeta.oldest_cache_age_ms = Date.now() - cached.savedAt;
+          log.warn("OVERPASS", `Using cached corridor facilities for ${river.name}`, {
+            facilities: previousOsm.length,
+            cache_age_ms: osmQueryMeta.oldest_cache_age_ms
+          });
+        }
         log.warn("OVERPASS", `River corridor query failed for ${river.name}: ${error.message}`, {
           failures: osmQueryMeta.failures
         });
@@ -1218,11 +1042,13 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
     count: facilities.length, osm_count: finalOsmCount, eea_count: finalEeaCount,
     osm_records_matched: osmFacilities.length, eea_records_matched: eeaFacilities.length,
     source_mode: sourceMode,
-    osm_status: sourceMode === "eea" ? "not_requested" : osmSkippedReason ? "deferred" : osmError ? "unavailable" : osmQueryMeta?.partial ? "partial" : "complete",
+    osm_status: sourceMode === "eea" ? "not_requested" : osmSkippedReason ? "deferred" : osmCacheFallback ? "cached" : osmError ? "unavailable" : osmQueryMeta?.partial ? "partial" : osmQueryMeta?.cached_chunks ? "cached" : "complete",
     osm_skip_reason: osmSkippedReason,
     osm_query_chunks: osmQueryMeta?.query_chunks ?? null,
     osm_successful_chunks: osmQueryMeta?.successful_chunks ?? null,
     osm_failed_chunks: osmQueryMeta?.failed_chunks ?? null,
+    osm_cached_chunks: osmQueryMeta?.cached_chunks ?? 0,
+    osm_cache_age_ms: osmQueryMeta?.oldest_cache_age_ms ?? null,
     eea_status: eeaError ? "unavailable" : "complete",
     eea_candidates_scanned: indexedEea.candidateCount,
     query_duration_ms: Date.now() - startedAt,
@@ -1232,7 +1058,9 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
       { name: "EEA Industrial Emissions Portal", url: EEA_IED.dataset_page, license: EEA_IED.license }
     ],
     warning: [
-      osmError ? "OpenStreetMap enrichment is temporarily unavailable. EEA registry results remain available." : null,
+      osmCacheFallback ? "Live OpenStreetMap mirrors are temporarily unavailable. Showing results from the last successful OSM corridor scan." :
+        osmError ? "Live OpenStreetMap enrichment is temporarily unavailable. Official EEA registry results remain available." : null,
+      !osmError && osmQueryMeta?.cached_chunks ? `OpenStreetMap live mirrors were unavailable for ${osmQueryMeta.cached_chunks} corridor sections; cached OSM results are shown.` : null,
       osmQueryMeta?.partial ? `OpenStreetMap returned partial coverage (${osmQueryMeta.successful_chunks}/${osmQueryMeta.query_chunks} corridor sections).` : null,
       eeaError ? `EEA registry lookup unavailable: ${eeaError}. Showing OpenStreetMap results.` : null
     ].filter(Boolean).join(" ") || null,
@@ -1244,7 +1072,7 @@ app.get("/api/rivers/:id/nearby-facilities", asyncRoute(async (req, res) => {
   riverFacilityCache.set(cacheKey, {
     savedAt: Date.now(), value,
     // Do not preserve a transient external outage for the full successful-result TTL.
-    ttlMs: osmError || eeaError || osmQueryMeta?.partial ? 30 * 1000 : RIVER_FACILITY_CACHE_MS
+    ttlMs: osmError || eeaError || osmQueryMeta?.partial || osmQueryMeta?.cached_chunks ? 5 * 60 * 1000 : RIVER_FACILITY_CACHE_MS
   });
   res.json(value);
 }));
@@ -1545,6 +1373,99 @@ app.get("/api/major-rivers", (_req, res) => {
   res.json(MAJOR_ITALIAN_RIVERS);
 });
 
+// --- River document archive ------------------------------------------------
+// File-based archive in backend/data/documents/. The page stays accessible
+// while the archive is empty; the team fills it over time.
+
+app.get("/api/documents", (req, res) => {
+  const riverId = req.query.river || null;
+  const riverRecord = riverId ? store.rivers.find(item => item.id === riverId) : null;
+  const { documents, errors } = filterDocuments({
+    query: req.query.q || null,
+    type: req.query.type || null,
+    region: req.query.region || null,
+    river: riverId,
+    riverName: riverRecord?.name || null,
+    year: req.query.year || null
+  });
+  res.json({
+    count: documents.length,
+    documents,
+    facets: documentFacets(),
+    types: DOCUMENT_TYPES,
+    load_errors: errors,
+    note: "Archive is file-based: add JSON metadata to backend/data/documents/ and files to backend/data/documents/files/."
+  });
+});
+
+app.get("/api/documents/:id", (req, res) => {
+  const doc = getDocument(req.params.id);
+  if (!doc) return res.status(404).json({ error: "Document not found" });
+  res.json({ ...doc, download_url: doc.file ? `/api/documents/${doc.id}/file` : null });
+});
+
+app.get("/api/documents/:id/file", (req, res) => {
+  const doc = getDocument(req.params.id);
+  if (!doc) return res.status(404).json({ error: "Document not found" });
+  const filePath = resolveDocumentFile(doc);
+  if (!filePath) return res.status(404).json({ error: "Document file not found in archive" });
+  res.download(filePath, doc.file);
+});
+
+// Rivers index for the documents page: every river known to the system,
+// including those without geometry, so documents can be attached to any river.
+app.get("/api/rivers-index", (_req, res) => {
+  const seen = new Set();
+  const rivers = [];
+  for (const river of store.rivers) {
+    const key = String(river.id || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rivers.push({
+      id: river.id,
+      name: river.name,
+      region: river.region || null,
+      region_code: river.region_code || null,
+      region_codes: river.region_codes || (river.region_code ? [river.region_code] : []),
+      length_km: river.length_km,
+      wfd_status: river.wfd_status,
+      geometry_source: river.geometry_source || null,
+      source_dataset_version: river.source_dataset_version || null,
+      source_feature_id: river.source_feature_id || null,
+      geometry_quality: river.geometry_quality || "unmatched",
+      source_url: river.source_url || null,
+      source_license: river.source_license || null,
+      source_license_url: river.source_license_url || null,
+      source_period: river.source_period || null,
+      assessment_type: river.assessment_type || null,
+      region_source_url: river.region_source_url || null,
+      national_baseline: river.national_baseline === true,
+      has_geometry: Boolean(river.geom),
+      has_data: store.arpatStretches.has(river.id) || store.stations.some(station =>
+        station.river_id === river.id && store.arpaMeasurements.has(station.id))
+    });
+  }
+  rivers.sort((a, b) => a.name.localeCompare(b.name, "it"));
+  res.json({ count: rivers.length, rivers });
+});
+
+// River gallery images: real Wikimedia Commons photos, cached 24h.
+// The gallery stays usable while images load or when none exist yet.
+app.get("/api/rivers/:id/image", asyncRoute(async (req, res) => {
+  const river = store.rivers.find(item => item.id === req.params.id);
+  if (!river) return res.status(404).json({ error: "River not found" });
+  try {
+    res.json(await getRiverImage(river));
+  } catch (error) {
+    log.warn("WIKIMEDIA", `${river.name} image: ${error.message}`);
+    res.status(502).json({
+      available: false,
+      error: "Wikimedia is temporarily unavailable",
+      image_url: null, thumb_url: null, page_url: null
+    });
+  }
+}));
+
 app.use((req, res) => {
   res.status(404).json({ error: "API route not found", request_id: req.requestId });
 });
@@ -1611,6 +1532,7 @@ httpServer = app.listen(PORT, async () => {
   log.info("SERVER", "Logging initialized", getLogStatus());
   try {
     await initArpa();
+    logDocumentArchiveState();
     runtime.phase = runtime.source_failures.length ? "degraded" : "ready";
     runtime.boot_finished_at = new Date().toISOString();
     log.info("BOOT", `Initialization complete: ${runtime.phase}`, {
