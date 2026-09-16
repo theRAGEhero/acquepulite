@@ -20,7 +20,7 @@ than one that does not.
 | Limitation | Measure |
 |---|---|
 | **Regional adapters currently reduce coverage.** Where a dedicated ARPA adapter exists it replaces the WISE national baseline instead of enriching it, and covers less. Fixing this is the main item on the roadmap (F2) | 1,214 water bodies shown of 3,208 available — Toscana 11 of 831, Lombardia 18 of 551 |
-| **ARPA Lombardia measurements are historical.** The Socrata analytical series stopped in December 2016. These values are dated in the interface and no longer colour the map | last sample 2016-12-29 |
+| **Measured-parameter sources are historical.** ARPA Lombardia's Socrata analytical series stopped in December 2016; the local ARPAE Emilia-Romagna snapshot ends in December 2019 although upstream is published as 2010–2025. Both are dated in the interface and no longer colour the map | last samples 2016-12-29 and 2019-12-10 |
 | Water bodies with no published classification, reported as unclassified rather than assumed good | 267 |
 | Monitoring stations whose position could not be tied reliably to a river line | 270 of 478 |
 | Classification vintages span more than a decade and are not yet visually distinguished | 2014–2025 |
@@ -65,7 +65,7 @@ A row below means the source is integrated, not that its coverage is complete.
 |---|---|---|---|
 | ARPA Lombardia (Socrata) | Lombardia | 14 parameters, 304 stations, 18 basins — **series ends 2016**, shown as historical record | Automatic via API |
 | ARPAT Toscana (CSV) | Toscana | 2022–2024 ecological/chemical status per water body | Automatic via API |
-| ARPAE | Emilia-Romagna | River monitoring stations and measured parameters | Automatic via API |
+| ARPAE | Emilia-Romagna | River monitoring stations and measured parameters — **local snapshot ends 2019**, shown as historical record | Automatic via API |
 | ARPA Piemonte (ArcGIS) | Piemonte | WFD ecological/chemical classification per water body | Automatic via API |
 | ARPA Veneto (CSV) | Veneto | LIMeco nutrient/oxygen indicator, latest result per water body | Automatic via API |
 | ARPA FVG (HTML) | Friuli-Venezia Giulia | WFD ecological/chemical classification, municipality and European code | Automatic from official tables |

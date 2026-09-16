@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { log } from "./logger.js";
+import { describeMeasurementPeriod } from "./measurementFreshness.js";
 
 const DATA_DIR = path.join(import.meta.dirname, "data", "arpae");
 
@@ -157,6 +158,22 @@ export async function loadArpaeEmiliaRomagna() {
     const name = asta.replace(/^F\.\s*/i, "").replace(/\s+/g, " ").trim();
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
+    // Period derived from the snapshot on disk. It used to be hardcoded as
+    // "Measurements 2010-2025" while the local file ends in 2019 — the upstream
+    // dataset is named for 2010-2025, but the downloaded snapshot is older.
+    // Detecting that drift automatically is the job of the ingestion pipeline.
+    let firstDate = null;
+    let lastDate = null;
+    for (const station of withData) {
+      for (const values of (measurementsByStation.get(station.id)?.values() ?? [])) {
+        for (const { timestamp } of values) {
+          if (!timestamp) continue;
+          if (firstDate === null || timestamp < firstDate) firstDate = timestamp;
+          if (lastDate === null || timestamp > lastDate) lastDate = timestamp;
+        }
+      }
+    }
+
     rivers.push({
       id: "arpae_" + slug,
       name,
@@ -165,7 +182,9 @@ export async function loadArpaeEmiliaRomagna() {
       source_url: "https://dati.arpae.it/dataset/rete-regionale-per-la-qualita-ambientale-acque-superficiali-fluviali-dati-2010-2025",
       source_license: "CC BY 4.0",
       source_license_url: "https://creativecommons.org/licenses/by/4.0/",
-      source_period: "Measurements 2010–2025",
+      source_period: describeMeasurementPeriod({ first: firstDate, last: lastDate }),
+      measurement_first_date: firstDate,
+      measurement_last_date: lastDate,
       assessment_type: "Measured parameters compared with configured environmental thresholds",
       wfd_status: null,
       geom: null, // geometry comes from OSM in server boot
