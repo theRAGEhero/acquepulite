@@ -2455,3 +2455,74 @@ html, body, #root {
 .app.light-ui .facility-subline,
 .app.light-ui .facility-dim { color: #65808e; }
 .app.light-ui .facility-error { color: #b3261e; }
+
+/* ============ MEASUREMENT PROVENANCE (T1/T2) ============
+   A measured value without its sampling date is not verifiable. The notice
+   appears when an agency dataset has stopped being updated, so a reader is
+   never left to assume that what they see describes the river today. */
+
+.param-sampled {
+  font-size: 11px;
+  color: #8896a8;
+  margin-top: 4px;
+  letter-spacing: .01em;
+}
+.param-sampled b { color: #cbd5e1; font-weight: 600; }
+
+.historical-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 140, 26, .38);
+  background: rgba(255, 140, 26, .10);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e6edf3;
+}
+.historical-notice strong { color: #ffb066; font-size: 12px; }
+.historical-notice b { color: #ffd2a6; }
+
+.app.light-ui .param-sampled { color: #65808e; }
+.app.light-ui .param-sampled b { color: #17384a; }
+.app.light-ui .historical-notice {
+  border-color: rgba(180, 83, 9, .32);
+  background: rgba(255, 237, 213, .85);
+  color: #4a3419;
+}
+.app.light-ui .historical-notice strong { color: #9a3412; }
+.app.light-ui .historical-notice b { color: #7c2d12; }
+
+/* ============ BETA BADGE (T4) ============
+   Always visible, never dismissible: someone arriving from a shared link must
+   be able to tell that the platform is under development. */
+
+.beta-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 176, 102, .55);
+  background: rgba(255, 140, 26, .16);
+  color: #ffb066;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s ease, border-color .15s ease;
+}
+.beta-badge:hover { background: rgba(255, 140, 26, .26); border-color: #ffb066; }
+.beta-badge:focus-visible { outline: 2px solid #ffb066; outline-offset: 2px; }
+
+.app.light-ui .beta-badge {
+  border-color: rgba(180, 83, 9, .42);
+  background: rgba(255, 237, 213, .92);
+  color: #9a3412;
+}
+.app.light-ui .beta-badge:hover { background: #ffe8d0; border-color: #b45309; }

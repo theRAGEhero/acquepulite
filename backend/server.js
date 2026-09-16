@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parameters } from "./data.js";
 import { loadArpaLombardia, summarizeStationMeasurements, PARAM_MAP } from "./arpaLombardia.js";
+import { measurementsAreCurrent, latestSampleDate } from "./measurementFreshness.js";
 import { loadArpatToscana } from "./arpatToscana.js";
 import { loadArpaeEmiliaRomagna } from "./arpaeEmiliaRomagna.js";
 import { loadArpaPiemonte } from "./arpaPiemonte.js";
@@ -579,13 +580,21 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
       const vals = p.values.map(v => v.value);
       const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
       const max = Math.max(...vals);
+      // Every measured value carries the date it was sampled: an average is
+      // meaningless to a reader who cannot tell whether it is from last season
+      // or from ten years ago.
+      const dates = p.values.map(v => v.timestamp).filter(Boolean).sort();
       return {
         param_code: p.param_code, param_name: p.param_name, unit: p.unit,
         legal_limit: p.legal_limit,
         avg: Number(avg.toFixed(3)), max: Number(max.toFixed(3)),
+        first_date: dates[0] || null,
+        latest_date: dates[dates.length - 1] || null,
         values: p.values, stations: p.stations
       };
     });
+    const allDates = summary.flatMap(p => [p.first_date, p.latest_date]).filter(Boolean).sort();
+    const latestSample = allDates[allDates.length - 1] || null;
     return res.json({
       river, stations: riverStations, parameters: summary,
       source: river.source || "ARPA Lombardia",
@@ -594,6 +603,8 @@ app.get("/api/rivers/:id/pollution-summary", (req, res) => {
       source_license_url: river.source_license_url || null,
       source_period: river.source_period || null,
       assessment_type: river.assessment_type || "measured_parameters",
+      measurement_latest_date: latestSample,
+      measurements_are_current: measurementsAreCurrent(latestSample),
       fetched_at: store.arpaFetchedAt
     });
   }
@@ -706,9 +717,15 @@ function scoreToColor(score) {
 
 // Compute a pollution score 0..1 for a station from real ARPA data.
 // Only uses parameters that have a legal_limit. Returns null if no real data.
+//
+// Stale measurements deliberately score null. The ARPA Lombardia series this
+// reads stops in December 2016, and painting a decade-old sample as current
+// pollution is the kind of claim the map cannot defend. The values stay
+// available in the river panel, dated, as historical record.
 function realStationScore(stationId, paramFilter) {
   const arpaMap = store.arpaMeasurements.get(stationId);
   if (!arpaMap) return null;
+  if (!measurementsAreCurrent(latestSampleDate(arpaMap))) return null;
   let sum = 0, n = 0;
   for (const [paramCode, arr] of arpaMap) {
     if (paramFilter && paramCode !== paramFilter) continue;

@@ -3,6 +3,7 @@
 // License: CC0 1.0 (Public Domain). Attribution: ARPA Lombardia.
 
 import { log } from "./logger.js";
+import { describeMeasurementPeriod } from "./measurementFreshness.js";
 
 const SOC_BASE = "https://www.dati.lombardia.it/resource/ixjj-e763.json";
 const SOC_DATASET_ID = "ixjj-e763";
@@ -27,24 +28,26 @@ const PARAM_MAP = {
 };
 
 
-const BASIN_WFD = {
-  LAMBRO: "poor",
-  "OLONA-LAMBRO MERIDIONALE": "poor",
-  ADDA: "good",
-  BREMBO: "moderate",
-  SERIO: "moderate",
-  TICINO: "good",
-  OGLIO: "moderate",
-  MELLA: "moderate",
-  CHIESE: "good",
-  MERA: "good",
-  MINCIO: "moderate",
-  AGOGNA: "moderate",
-  SEVESO: "poor",
-  PO: "moderate",
-  "FISSERO-TARTARO": "moderate",
-  SPOL: "moderate"
-};
+// The WFD status of these basins used to come from a hardcoded table here, with
+// "moderate" as the default for any basin missing from it. That table cited no
+// source: it asserted an official-looking classification that no agency had
+// published. A river whose class is unknown is now reported as unclassified,
+// and the official classification arrives from the WISE national baseline.
+
+function measurementPeriod(byStation) {
+  let first = null;
+  let last = null;
+  for (const byParam of byStation.values()) {
+    for (const values of byParam.values()) {
+      for (const { timestamp } of values) {
+        if (!timestamp) continue;
+        if (first === null || timestamp < first) first = timestamp;
+        if (last === null || timestamp > last) last = timestamp;
+      }
+    }
+  }
+  return { first, last };
+}
 
 function toNum(v) {
   if (v == null || v === "") return null;
@@ -103,18 +106,24 @@ async function loadBasin(basin) {
     m.get(cfg.code).push({ value: val, timestamp: ts, unit: r.um || cfg.unit });
   }
 
+  const period = measurementPeriod(byStation);
   const riverId = basin.toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const river = {
     id: riverId,
     name: basin.charAt(0) + basin.slice(1).toLowerCase(),
     region: "Lombardia (ARPA)",
     length_km: null,
-    wfd_status: BASIN_WFD[basin] || "moderate",
+    // No agency classification is published in this dataset; it carries
+    // measurements only. Unclassified is the honest answer.
+    wfd_status: null,
     source: "ARPA Lombardia",
     source_url: `https://www.dati.lombardia.it/d/${SOC_DATASET_ID}`,
     source_license: "CC0 1.0",
     source_license_url: "https://creativecommons.org/publicdomain/zero/1.0/",
-    source_period: "Latest available agency measurements",
+    // Derived from the data itself, so it cannot drift away from the truth.
+    source_period: describeMeasurementPeriod(period),
+    measurement_first_date: period.first,
+    measurement_last_date: period.last,
     assessment_type: "Measured parameters compared with configured environmental thresholds",
     // Geometry is resolved later from official WISE hydrography, falling back to
     // OpenStreetMap; server.js sets it to null when neither matches. Never

@@ -303,6 +303,13 @@ export default function App() {
     setDrawer(null);
   }, []);
 
+  // The beta badge opens the provenance drawer. When the dedicated data-status
+  // page lands it should point there instead.
+  const openDataStatus = useCallback(() => {
+    setDrawer("sources");
+    setDrawerFullscreen(false);
+  }, []);
+
   const closeDocuments = useCallback(() => {
     window.location.hash = "";
   }, []);
@@ -340,7 +347,14 @@ export default function App() {
         <header className="title-card">
           <span className="system-mark">AP//IT</span>
           <span>AcquePulite</span>
-          <small>Official WFD geometry · live agency observations</small>
+          {/* The subtitle used to claim "live agency observations". Nothing here
+              is live: sources are ingested periodically and some regional
+              classifications date from 2014-2019. */}
+          <small>Official WFD geometry · agency classifications, dated at source</small>
+          <button type="button" className="beta-badge" onClick={openDataStatus}
+            title="This platform is under development — see what is provisional">
+            BETA · in sviluppo
+          </button>
         </header>
         <MonitoringHud metrics={metrics} updatedAt={dataSources?.updated_at} health={systemHealth} />
 
@@ -403,7 +417,12 @@ function MonitoringHud({ metrics, updatedAt, health }) {
       <HudMetric label="Stations" value={metrics.stations} />
       <HudMetric label="Critical" value={metrics.alerts} alert={metrics.alerts > 0} />
       <HudMetric label="Official geom." value={`${metrics.official}%`} />
-      <div className="hud-clock">SYNC {updatedAt ? new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}</div>
+      {/* Time alone made two-week-old data read as this afternoon. */}
+      <div className="hud-clock" title={updatedAt ? new Date(updatedAt).toLocaleString() : undefined}>
+        SYNC {updatedAt
+          ? new Date(updatedAt).toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "numeric" })
+          : "--/--/----"}
+      </div>
     </div>
   );
 }

@@ -1,9 +1,35 @@
 # AcquePulite — Environmental Investigation Tool
 
+> **Under development.** This platform is being built in the open and has known
+> data limitations, listed below and tracked in [PLAN.md](PLAN.md). Read them
+> before citing anything from it.
+
+**Live:** https://acquepulite.it · **Licence:** [EUPL-1.2](LICENSE) · **Roadmap:** [PLAN.md](PLAN.md)
+
 Map-first technical dashboard for monitoring Italian rivers with pollution data
 from **real regional authorities** (ARPA/ARPAT). River reaches follow official
 WISE WFD 2022 hydrography where matched, with topology-safe OpenStreetMap
 fallbacks, and use a blue (good) to red (bad) severity scale.
+
+## Known limitations
+
+These are measured against the running instance, not estimated. They are
+published deliberately: a platform that states its limits is more verifiable
+than one that does not.
+
+| Limitation | Measure |
+|---|---|
+| **Regional adapters currently reduce coverage.** Where a dedicated ARPA adapter exists it replaces the WISE national baseline instead of enriching it, and covers less. Fixing this is the main item on the roadmap (F2) | 1,214 water bodies shown of 3,208 available — Toscana 11 of 831, Lombardia 18 of 551 |
+| **ARPA Lombardia measurements are historical.** The Socrata analytical series stopped in December 2016. These values are dated in the interface and no longer colour the map | last sample 2016-12-29 |
+| Water bodies with no published classification, reported as unclassified rather than assumed good | 267 |
+| Monitoring stations whose position could not be tied reliably to a river line | 270 of 478 |
+| Classification vintages span more than a decade and are not yet visually distinguished | 2014–2025 |
+| Two regions are assessed on measured parameters rather than the official WFD class, so their colours are not comparable with the rest | Lombardia, Emilia-Romagna |
+| Frontend test coverage | none yet |
+
+Pollutant screening thresholds are **not yet traced to a legal instrument** and
+mix regulatory regimes; the interface labels them as screening references, never
+as a compliance ruling. See F6/T46 in [PLAN.md](PLAN.md).
 
 Selecting a river opens an expandable operations drawer with measurements,
 water-body classifications, nearby companies, geometry provenance, and a
@@ -32,9 +58,12 @@ not discard EEA records or turn the facility endpoint into an application 5xx.
 
 ## Data sources (all real, no sample data)
 
+Coverage differs sharply by region: see [Known limitations](#known-limitations).
+A row below means the source is integrated, not that its coverage is complete.
+
 | Source | Region | Data | Access |
 |---|---|---|---|
-| ARPA Lombardia (Socrata) | Lombardia | 14 parameters, 304 stations, 18 basins | Automatic via API |
+| ARPA Lombardia (Socrata) | Lombardia | 14 parameters, 304 stations, 18 basins — **series ends 2016**, shown as historical record | Automatic via API |
 | ARPAT Toscana (CSV) | Toscana | 2022–2024 ecological/chemical status per water body | Automatic via API |
 | ARPAE | Emilia-Romagna | River monitoring stations and measured parameters | Automatic via API |
 | ARPA Piemonte (ArcGIS) | Piemonte | WFD ecological/chemical classification per water body | Automatic via API |

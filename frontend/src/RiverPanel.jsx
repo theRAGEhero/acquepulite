@@ -171,6 +171,17 @@ export default function RiverPanel({
           </div>
 
           <div className="section-title">Measured pollution parameters</div>
+          {summary.measurement_latest_date && !summary.measurements_are_current && (
+            <div className="historical-notice">
+              <strong>Historical measurements — not current conditions.</strong>
+              <span>
+                The most recent sample in this agency dataset is
+                {" "}<b>{summary.measurement_latest_date}</b>. Values are shown as published
+                record; they no longer colour the map, because a sample this old cannot
+                represent the river today.
+              </span>
+            </div>
+          )}
           <div className="assessment-note">Values come from the linked agency dataset. Thresholds shown below are dashboard screening references, not a legal compliance ruling.</div>
           {summary.parameters.map(p => {
             const pct = p.legal_limit
@@ -192,6 +203,13 @@ export default function RiverPanel({
                     ? ` · screening reference ${p.legal_limit} ${p.unit}`
                     : " · no screening reference"}
                 </div>
+                {p.latest_date && (
+                  <div className="param-sampled">
+                    Sampled {p.first_date && p.first_date !== p.latest_date
+                      ? <>{p.first_date} → <b>{p.latest_date}</b></>
+                      : <b>{p.latest_date}</b>}
+                  </div>
+                )}
                 <div className="bar">
                   <div style={{
                     width: `${pct}%`,
