@@ -5,6 +5,11 @@ Documento di lavoro: le attività sono numerate (`T1`…`T53`) e raggruppate in 
 
 **Sito:** https://acquepulite.it · **Codice:** https://github.com/theRAGEhero/acquepulite
 
+> **Per eseguire:** questo documento dice *cosa* e *perché*.
+> [SPEC.md](SPEC.md) dice *come verificarlo* e *cosa può andare storto* — dipendenze,
+> contratti, trappole del codice e un criterio di accettazione per ogni attività.
+> Chi implementa parte da lì.
+
 > Questo documento dichiara apertamente i difetti noti della piattaforma. È una scelta:
 > una piattaforma ambientale che elenca i propri limiti è più verificabile di una che tace.
 
@@ -24,13 +29,17 @@ Documento di lavoro: le attività sono numerate (`T1`…`T53`) e raggruppate in 
 - **Armonizzazione della classificazione WFD** fra tutte le regioni: un solo modulo
   (`backend/wfdClassification.js`), 40 test. Effetti in produzione: Veneto da 0 a 109 corpi
   idrici in classe "elevato", WISE da 0 a 72, Toscana 8 fiumi corretti da "poor" a "bad".
+- **F0 completa** (T1–T5): le misure storiche non colorano più la mappa, i periodi sono derivati
+  dai dati e non più scritti a mano, via l'affermazione "live agency observations", badge BETA
+  sempre visibile, licenza EUPL-1.2 e limiti noti dichiarati nel README.
 
 **Difetti noti ancora aperti**
 
 | Difetto | Misura |
 |---|---|
-| Misure ARPA Lombardia risalenti al **2016**, mostrate come attuali | 129 tratte colorate |
+| **Lombardia ed Emilia-Romagna senza colore sulla mappa.** Conseguenza diretta e prevista di F0: le loro misure sono storiche (2016 e 2019) e non esiste per loro una classificazione pubblicata. Si risolve con **T13/T14** | 183 tratte perse, da recuperare come ~835 corpi idrici WISE |
 | Copertura sacrificata dagli adattatori regionali | 1.214 corpi idrici su 3.208 disponibili |
+| **Snapshot locali alla deriva rispetto alla sorgente.** Il file ARPAE su disco finisce nel 2019 mentre la fonte è pubblicata come 2010–2025, e nulla se ne accorge. È il caso reale che motiva **T11** | 1 fonte accertata, le altre non verificate |
 | Corpi idrici non classificati | 267 |
 | Stazioni di monitoraggio da rivedere | 270 su 478 |
 | Vintage delle classificazioni mostrati identici | dal 2014 al 2025 |
